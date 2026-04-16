@@ -1,121 +1,441 @@
 import 'package:flutter/material.dart';
 
 void main() {
-  runApp(const MyApp());
+  runApp(const CalculatorApp());
 }
 
-class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+class CalculatorApp extends StatelessWidget {
+  const CalculatorApp({super.key});
 
-  // This widget is the root of your application.
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Calculator',
+      debugShowCheckedModeBanner: false,
+      title: 'iOS Calculator',
       theme: ThemeData(
-        // This is the theme of your application.
-        //
-        // TRY THIS: Try running your application with "flutter run". You'll see
-        // the application has a purple toolbar. Then, without quitting the app,
-        // try changing the seedColor in the colorScheme below to Colors.green
-        // and then invoke "hot reload" (save your changes or press the "hot
-        // reload" button in a Flutter-supported IDE, or press "r" if you used
-        // the command line to start the app).
-        //
-        // Notice that the counter didn't reset back to zero; the application
-        // state is not lost during the reload. To reset the state, use hot
-        // restart instead.
-        //
-        // This works for code too, not just values: Most code changes can be
-        // tested with just a hot reload.
-        colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+        brightness: Brightness.dark,
+        scaffoldBackgroundColor: Colors.black,
       ),
-      home: const MyHomePage(title: 'Calculator Home Page'),
+      home: const CalculatorHome(),
     );
   }
 }
 
-class MyHomePage extends StatefulWidget {
-  const MyHomePage({super.key, required this.title});
-
-  // This widget is the home page of your application. It is stateful, meaning
-  // that it has a State object (defined below) that contains fields that affect
-  // how it looks.
-
-  // This class is the configuration for the state. It holds the values (in this
-  // case the title) provided by the parent (in this case the App widget) and
-  // used by the build method of the State. Fields in a Widget subclass are
-  // always marked "final".
-
-  final String title;
+class CalculatorHome extends StatefulWidget {
+  const CalculatorHome({super.key});
 
   @override
-  State<MyHomePage> createState() => _MyHomePageState();
+  State<CalculatorHome> createState() => _CalculatorHomeState();
 }
 
-class _MyHomePageState extends State<MyHomePage> {
-  int _counter = 0;
+class _CalculatorHomeState extends State<CalculatorHome> {
+  String _expression = '0';
+  String _history = '';
+  bool _isResultDisplayed = false;
+  String? _lastOperator;
+  double? _lastOperand;
 
-  void _incrementCounter() {
+  void _onButtonPressed(String text) {
     setState(() {
-      // This call to setState tells the Flutter framework that something has
-      // changed in this State, which causes it to rerun the build method below
-      // so that the display can reflect the updated values. If we changed
-      // _counter without calling setState(), then the build method would not be
-      // called again, and so nothing would appear to happen.
-      _counter++;
+      if (RegExp(r'^[0-9]$').hasMatch(text)) {
+        if (_expression == '0' || _isResultDisplayed) {
+          if (_isResultDisplayed) _history = '';
+          _expression = text;
+          _isResultDisplayed = false;
+        } else {
+          List<String> tokens = _expression.split(' ');
+          String lastToken = tokens.last;
+          if (RegExp(r'^[0-9,.]+$').hasMatch(lastToken)) {
+            String cleanNumber = lastToken.replaceAll(',', '');
+            tokens[tokens.length - 1] = _addCommas(cleanNumber + text);
+            _expression = tokens.join(' ');
+          } else if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
+            String numberPart = lastToken.substring(2, lastToken.length - 1).replaceAll(',', '');
+            tokens[tokens.length - 1] = '(-${_addCommas(numberPart + text)})';
+            _expression = tokens.join(' ');
+          } else {
+            _expression += text;
+          }
+        }
+      } else if (text == '.') {
+        List<String> tokens = _expression.split(' ');
+        String lastToken = tokens.last.replaceAll(',', '');
+        if (!lastToken.contains('.')) {
+          if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
+            String numberPart = lastToken.substring(2, lastToken.length - 1);
+            tokens[tokens.length - 1] = '(-$numberPart.)';
+            _expression = tokens.join(' ');
+          } else {
+            _expression += '.';
+          }
+        }
+      } else if (text == '⌫') {
+        _handleBackspace();
+      } else if (text == 'AC' || text == 'C') {
+        _expression = '0';
+        _history = '';
+        _isResultDisplayed = false;
+        _lastOperator = null;
+        _lastOperand = null;
+      } else if (text == '+/-') {
+        _toggleSign();
+      } else if (text == '%') {
+        if (_isResultDisplayed) {
+          _isResultDisplayed = false;
+          _history = '';
+          _lastOperator = null;
+          _lastOperand = null;
+        }
+        _applyPercent();
+      } else if (text == '+' || text == '-' || text == '×' || text == '÷') {
+        if (_isResultDisplayed) {
+          _isResultDisplayed = false;
+          _history = '';
+        }
+        if (RegExp(r'[+×÷-]$').hasMatch(_expression.trim())) {
+          _expression = _expression.trim().substring(0, _expression.trim().length - 1) + text + ' ';
+        } else {
+          _expression = '${_expression.trim()} $text ';
+        }
+      } else if (text == '=') {
+        if (_isResultDisplayed && _lastOperator != null && _lastOperand != null) {
+          _repeatLastOperation();
+        } else {
+          _calculate();
+        }
+      }
     });
+  }
+
+  void _repeatLastOperation() {
+    double currentVal = _parseToken(_expression);
+    double result = 0;
+    
+    if (_lastOperator == '%') {
+      result = currentVal / 100.0;
+      _history = "${_addCommas(_formatValue(currentVal))}%";
+    } else {
+      switch (_lastOperator) {
+        case '+': result = currentVal + _lastOperand!; break;
+        case '-': result = currentVal - _lastOperand!; break;
+        case '×': result = currentVal * _lastOperand!; break;
+        case '÷': result = currentVal / _lastOperand!; break;
+      }
+      _history = "${_addCommas(_formatValue(currentVal))} $_lastOperator ${_addCommas(_formatValue(_lastOperand!))}";
+    }
+    
+    _expression = _formatResult(result);
+    _isResultDisplayed = true;
+  }
+
+  void _handleBackspace() {
+    if (_expression.endsWith(' ')) {
+      _expression = _expression.trim();
+      _expression = _expression.substring(0, _expression.length - 1).trim();
+    } else {
+      List<String> tokens = _expression.split(' ');
+      String lastToken = tokens.last;
+      if (lastToken.length > 1) {
+        if (lastToken.endsWith('%')) {
+          tokens[tokens.length - 1] = lastToken.substring(0, lastToken.length - 1);
+        } else if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
+          String numberPart = lastToken.substring(2, lastToken.length - 1).replaceAll(',', '');
+          if (numberPart.length > 1) {
+            tokens[tokens.length - 1] = '(-${_addCommas(numberPart.substring(0, numberPart.length - 1))})';
+          } else {
+            tokens[tokens.length - 1] = '0';
+          }
+        } else {
+          String cleanNumber = lastToken.replaceAll(',', '');
+          tokens[tokens.length - 1] = _addCommas(cleanNumber.substring(0, cleanNumber.length - 1));
+        }
+        _expression = tokens.join(' ');
+      } else {
+        if (tokens.length > 1) {
+          tokens.removeLast();
+          _expression = tokens.join(' ');
+        } else {
+          _expression = '0';
+        }
+      }
+    }
+    if (_expression.isEmpty) _expression = '0';
+  }
+
+  String _addCommas(String s) {
+    if (s.isEmpty) return '';
+    List<String> parts = s.split('.');
+    RegExp reg = RegExp(r'\B(?=(\d{3})+(?!\d))');
+    parts[0] = parts[0].replaceAll(reg, ',');
+    return parts.join('.');
+  }
+
+  void _toggleSign() {
+    setState(() {
+      List<String> tokens = _expression.trim().split(' ');
+      if (tokens.isEmpty) return;
+
+      String lastToken = tokens.last;
+      
+      // 1. 이미 음수(괄호형 또는 단순형)인 경우 양수로 전환
+      if (lastToken.startsWith('(-') && lastToken.endsWith(')')) {
+        tokens[tokens.length - 1] = lastToken.substring(2, lastToken.length - 1);
+      } else if (lastToken.startsWith('-')) {
+        tokens[tokens.length - 1] = lastToken.substring(1);
+      } 
+      // 2. 양수인 경우 음수로 전환 (항상 괄호 사용)
+      else {
+        String cleanNumber = lastToken.replaceAll(',', '');
+        if (double.tryParse(cleanNumber) != null && cleanNumber != '0') {
+          tokens[tokens.length - 1] = '(-$lastToken)';
+        }
+      }
+      _expression = tokens.join(' ');
+    });
+  }
+
+  void _applyPercent() {
+    List<String> tokens = _expression.trim().split(' ');
+    String lastToken = tokens.last;
+    
+    if (lastToken.isNotEmpty && !lastToken.endsWith('%') && 
+        (RegExp(r'[0-9,.]+$').hasMatch(lastToken) || RegExp(r'^\(.*\)$').hasMatch(lastToken))) {
+      tokens[tokens.length - 1] = '$lastToken%';
+      _expression = tokens.join(' ');
+    }
+  }
+
+  double _parseToken(String token) {
+    String clean = token.replaceAll('(', '').replaceAll(')', '').replaceAll(',', '');
+    bool isPercent = clean.endsWith('%');
+    if (isPercent) {
+      clean = clean.substring(0, clean.length - 1);
+    }
+    double val = double.tryParse(clean) ?? 0;
+    return isPercent ? val / 100 : val;
+  }
+
+  String _formatValue(double result) {
+    String fixed = result.toStringAsFixed(10);
+    double rounded = double.parse(fixed);
+    String s = rounded.toString();
+
+    if (!s.contains('e') && s.contains('.')) {
+      s = s.replaceAll(RegExp(r'0+$'), '');
+      if (s.endsWith('.')) s = s.substring(0, s.length - 1);
+    }
+
+    if (s.length > 13) {
+      s = result.toStringAsPrecision(9);
+      if (s.contains('e')) {
+        List<String> parts = s.split('e');
+        if (parts[0].contains('.')) {
+          parts[0] = parts[0].replaceAll(RegExp(r'0+$'), '');
+          if (parts[0].endsWith('.')) parts[0] = parts[0].substring(0, parts[0].length - 1);
+        }
+        s = parts.join('e');
+      }
+    }
+    
+    return _addCommas(s);
+  }
+
+  void _calculate() {
+    try {
+      String trimmed = _expression.trim();
+      if (RegExp(r'[+×÷-]$').hasMatch(trimmed)) return;
+
+      List<String> tokens = trimmed.split(' ');
+      if (tokens.isEmpty) return;
+
+      if (tokens.length == 1) {
+        double val = _parseToken(tokens[0]);
+        setState(() {
+          _history = _expression;
+          if (tokens[0].endsWith('%')) {
+            _lastOperator = '%';
+            _lastOperand = 100.0;
+          }
+          _expression = _formatResult(val);
+          _isResultDisplayed = true;
+        });
+        return;
+      }
+
+      _history = _expression;
+      List<dynamic> values = [];
+      for (var t in tokens) {
+        if (RegExp(r'[+×÷-]').hasMatch(t) && t.length == 1) {
+          values.add(t);
+        } else {
+          values.add(_parseToken(t));
+        }
+      }
+
+      if (tokens.length >= 3) {
+        _lastOperator = tokens[tokens.length - 2];
+        _lastOperand = _parseToken(tokens.last);
+      }
+
+      for (int i = 0; i < values.length; i++) {
+        if (values[i] == '×' || values[i] == '÷') {
+          double left = values[i - 1];
+          double right = values[i + 1];
+          double res = (values[i] == '×') ? left * right : left / right;
+          values.removeAt(i - 1);
+          values.removeAt(i - 1);
+          values.removeAt(i - 1);
+          values.insert(i - 1, res);
+          i--;
+        }
+      }
+
+      double finalRes = values[0];
+      for (int i = 1; i < values.length; i += 2) {
+        String op = values[i];
+        double nextVal = values[i + 1];
+        if (op == '+') finalRes += nextVal;
+        if (op == '-') finalRes -= nextVal;
+      }
+
+      setState(() {
+        _expression = _formatResult(finalRes);
+        _isResultDisplayed = true;
+      });
+    } catch (e) {
+      setState(() {
+        _expression = 'Error';
+        _isResultDisplayed = true;
+      });
+    }
+  }
+
+  String _formatResult(double result) {
+    if (result.isInfinite || result.isNaN) return 'Error';
+    return _formatValue(result);
+  }
+
+  Widget _buildButton(String text, Color bgColor, Color textColor) {
+    return Expanded(
+      child: Padding(
+        padding: const EdgeInsets.all(6.0),
+        child: InkWell(
+          onTap: () => _onButtonPressed(text),
+          borderRadius: BorderRadius.circular(50),
+          child: Container(
+            height: 70,
+            decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
+            child: Center(
+              child: Text(
+                text,
+                style: TextStyle(
+                  fontSize: text == '⌫' ? 24 : 28,
+                  fontWeight: FontWeight.w500,
+                  color: textColor,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    // This method is rerun every time setState is called, for instance as done
-    // by the _incrementCounter method above.
-    //
-    // The Flutter framework has been optimized to make rerunning build methods
-    // fast, so that you can just rebuild anything that needs updating rather
-    // than having to individually change instances of widgets.
     return Scaffold(
-      appBar: AppBar(
-        // TRY THIS: Try changing the color here to a specific color (to
-        // Colors.amber, perhaps?) and trigger a hot reload to see the AppBar
-        // change color while the other colors stay the same.
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        // Here we take the value from the MyHomePage object that was created by
-        // the App.build method, and use it to set our appbar title.
-        title: Text(widget.title),
-      ),
-      body: Center(
-        // Center is a layout widget. It takes a single child and positions it
-        // in the middle of the parent.
+      body: SafeArea(
         child: Column(
-          // Column is also a layout widget. It takes a list of children and
-          // arranges them vertically. By default, it sizes itself to fit its
-          // children horizontally, and tries to be as tall as its parent.
-          //
-          // Column has various properties to control how it sizes itself and
-          // how it positions its children. Here we use mainAxisAlignment to
-          // center the children vertically; the main axis here is the vertical
-          // axis because Columns are vertical (the cross axis would be
-          // horizontal).
-          //
-          // TRY THIS: Invoke "debug painting" (choose the "Toggle Debug Paint"
-          // action in the IDE, or press "p" in the console), to see the
-          // wireframe for each widget.
-          mainAxisAlignment: .center,
           children: [
-            const Text('You have pushed the button this many times:'),
-            Text(
-              '$_counter',
-              style: Theme.of(context).textTheme.headlineMedium,
+            Expanded(
+              child: Container(
+                alignment: Alignment.bottomRight,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (_history.isNotEmpty)
+                      SingleChildScrollView(
+                        reverse: true,
+                        scrollDirection: Axis.horizontal,
+                        child: Text(
+                          _history,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      reverse: true,
+                      scrollDirection: Axis.horizontal,
+                      child: Text(
+                        _expression,
+                        style: TextStyle(
+                          fontSize: _expression.length > 10 ? 40 : 60,
+                          fontWeight: FontWeight.w300,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            Column(
+              children: [
+                Row(
+                  children: [
+                    _buildButton('⌫', Colors.grey[600]!, Colors.white),
+                    _buildButton(
+                      (_expression == '0' || _isResultDisplayed) ? 'AC' : 'C',
+                      Colors.grey[400]!,
+                      Colors.black,
+                    ),
+                    _buildButton('%', Colors.grey[400]!, Colors.black),
+                    _buildButton('÷', Colors.orange, Colors.white),
+                  ],
+                ),
+                Row(
+                  children: [
+                    _buildButton('7', Colors.grey[850]!, Colors.white),
+                    _buildButton('8', Colors.grey[850]!, Colors.white),
+                    _buildButton('9', Colors.grey[850]!, Colors.white),
+                    _buildButton('×', Colors.orange, Colors.white),
+                  ],
+                ),
+                Row(
+                  children: [
+                    _buildButton('4', Colors.grey[850]!, Colors.white),
+                    _buildButton('5', Colors.grey[850]!, Colors.white),
+                    _buildButton('6', Colors.grey[850]!, Colors.white),
+                    _buildButton('-', Colors.orange, Colors.white),
+                  ],
+                ),
+                Row(
+                  children: [
+                    _buildButton('1', Colors.grey[850]!, Colors.white),
+                    _buildButton('2', Colors.grey[850]!, Colors.white),
+                    _buildButton('3', Colors.grey[850]!, Colors.white),
+                    _buildButton('+', Colors.orange, Colors.white),
+                  ],
+                ),
+                Row(
+                  children: [
+                    _buildButton('+/-', Colors.grey[850]!, Colors.white),
+                    _buildButton('0', Colors.grey[850]!, Colors.white),
+                    _buildButton('.', Colors.grey[850]!, Colors.white),
+                    _buildButton('=', Colors.orange, Colors.white),
+                  ],
+                ),
+                const SizedBox(height: 20),
+              ],
             ),
           ],
         ),
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _incrementCounter,
-        tooltip: 'Increment',
-        child: const Icon(Icons.add),
       ),
     );
   }
