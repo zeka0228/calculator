@@ -29,106 +29,205 @@ class CalculatorHome extends StatefulWidget {
 }
 
 class _CalculatorHomeState extends State<CalculatorHome> {
-  String _display = '0';
-  double? _firstOperand;
-  String? _operator;
-  bool _shouldResetDisplay = false;
+  String _expression = '0';
+  String _history = '';
+  bool _isResultDisplayed = false;
 
   void _onButtonPressed(String text) {
     setState(() {
       if (RegExp(r'^[0-9]$').hasMatch(text)) {
-        if (_display == '0' || _shouldResetDisplay) {
-          _display = text;
-          _shouldResetDisplay = false;
+        if (_expression == '0' || _isResultDisplayed) {
+          if (_isResultDisplayed) _history = '';
+          _expression = text;
+          _isResultDisplayed = false;
         } else {
-          _display += text;
+          List<String> tokens = _expression.split(' ');
+          String lastToken = tokens.last;
+          if (RegExp(r'^[0-9,.]+$').hasMatch(lastToken)) {
+            String cleanNumber = lastToken.replaceAll(',', '');
+            tokens[tokens.length - 1] = _addCommas(cleanNumber + text);
+            _expression = tokens.join(' ');
+          } else if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
+            String numberPart = lastToken.substring(2, lastToken.length - 1).replaceAll(',', '');
+            tokens[tokens.length - 1] = '(-${_addCommas(numberPart + text)})';
+            _expression = tokens.join(' ');
+          } else {
+            _expression += text;
+          }
         }
       } else if (text == '.') {
-        if (!_display.contains('.')) {
-          _display += '.';
+        List<String> tokens = _expression.split(' ');
+        String lastToken = tokens.last.replaceAll(',', '');
+        if (!lastToken.contains('.')) {
+          if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
+            String numberPart = lastToken.substring(2, lastToken.length - 1);
+            tokens[tokens.length - 1] = '(-$numberPart.)';
+            _expression = tokens.join(' ');
+          } else {
+            _expression += '.';
+          }
         }
       } else if (text == '⌫') {
-        if (_display.startsWith('(') && _display.endsWith(')')) {
-          _display = _display.substring(2, _display.length - 1);
-          if (_display.isEmpty) _display = '0';
-        } else if (_display.length > 1) {
-          _display = _display.substring(0, _display.length - 1);
-        } else {
-          _display = '0';
-        }
-      } else if (text == 'AC') {
-        _display = '0';
-        _firstOperand = null;
-        _operator = null;
-        _shouldResetDisplay = false;
-      } else if (text == 'C') {
-        _display = '0';
+        _handleBackspace();
+      } else if (text == 'AC' || text == 'C') {
+        _expression = '0';
+        _history = '';
+        _isResultDisplayed = false;
       } else if (text == '+/-') {
-        if (_display != '0') {
-          if (_display.startsWith('(') && _display.endsWith(')')) {
-            _display = _display.substring(2, _display.length - 1);
-          } else {
-            _display = '(-$_display)';
-          }
-        }
+        _toggleSign();
       } else if (text == '%') {
-        double val = _parseDisplay(_display) / 100;
-        _display = _formatResult(val);
+        _applyPercent();
       } else if (text == '+' || text == '-' || text == '×' || text == '÷') {
-        _firstOperand = _parseDisplay(_display);
-        _operator = text;
-        _shouldResetDisplay = true;
-      } else if (text == '=') {
-        if (_firstOperand != null && _operator != null) {
-          double secondOperand = _parseDisplay(_display);
-          double result = 0;
-          switch (_operator) {
-            case '+':
-              result = _firstOperand! + secondOperand;
-              break;
-            case '-':
-              result = _firstOperand! - secondOperand;
-              break;
-            case '×':
-              result = _firstOperand! * secondOperand;
-              break;
-            case '÷':
-              result = _firstOperand! / secondOperand;
-              break;
-          }
-          _display = _formatResult(result);
-          _firstOperand = null;
-          _operator = null;
-          _shouldResetDisplay = true;
+        if (_isResultDisplayed) {
+          _isResultDisplayed = false;
+          _history = '';
         }
+        if (RegExp(r'[+×÷-]$').hasMatch(_expression.trim())) {
+          _expression = _expression.trim().substring(0, _expression.trim().length - 1) + text + ' ';
+        } else {
+          _expression = '${_expression.trim()} $text ';
+        }
+      } else if (text == '=') {
+        _calculate();
       }
     });
   }
 
-  double _parseDisplay(String text) {
-    String cleanText = text;
-    if (text.startsWith('(') && text.endsWith(')')) {
-      cleanText = text.substring(1, text.length - 1);
+  void _handleBackspace() {
+    if (_expression.endsWith(' ')) {
+      _expression = _expression.trim();
+      _expression = _expression.substring(0, _expression.length - 1).trim();
+    } else {
+      List<String> tokens = _expression.split(' ');
+      String lastToken = tokens.last;
+      if (lastToken.length > 1) {
+        if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
+          String numberPart = lastToken.substring(2, lastToken.length - 1).replaceAll(',', '');
+          if (numberPart.length > 1) {
+            tokens[tokens.length - 1] = '(-${_addCommas(numberPart.substring(0, numberPart.length - 1))})';
+          } else {
+            tokens[tokens.length - 1] = '0';
+          }
+        } else {
+          String cleanNumber = lastToken.replaceAll(',', '');
+          tokens[tokens.length - 1] = _addCommas(cleanNumber.substring(0, cleanNumber.length - 1));
+        }
+        _expression = tokens.join(' ');
+      } else {
+        if (tokens.length > 1) {
+          tokens.removeLast();
+          _expression = tokens.join(' ');
+        } else {
+          _expression = '0';
+        }
+      }
     }
-    return double.tryParse(cleanText) ?? 0;
+    if (_expression.isEmpty) _expression = '0';
+  }
+
+  String _addCommas(String s) {
+    if (s.isEmpty) return '';
+    List<String> parts = s.split('.');
+    RegExp reg = RegExp(r'\B(?=(\d{3})+(?!\d))');
+    parts[0] = parts[0].replaceAll(reg, ',');
+    return parts.join('.');
+  }
+
+  void _toggleSign() {
+    List<String> tokens = _expression.trim().split(' ');
+    if (tokens.isEmpty) return;
+
+    String lastToken = tokens.last;
+    if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
+      tokens[tokens.length - 1] = lastToken.substring(2, lastToken.length - 1);
+    } else {
+      String cleanNumber = lastToken.replaceAll(',', '');
+      if (double.tryParse(cleanNumber) != null && cleanNumber != '0') {
+        tokens[tokens.length - 1] = '(-$lastToken)';
+      }
+    }
+    _expression = tokens.join(' ');
+  }
+
+  void _applyPercent() {
+    List<String> tokens = _expression.trim().split(' ');
+    double val = _parseToken(tokens.last) / 100;
+    tokens[tokens.length - 1] = _formatResult(val);
+    _expression = tokens.join(' ');
+  }
+
+  double _parseToken(String token) {
+    String clean = token.replaceAll('(', '').replaceAll(')', '').replaceAll(',', '');
+    return double.tryParse(clean) ?? 0;
+  }
+
+  String _formatValue(double result) {
+    String s;
+    if (result == result.toInt()) {
+      s = result.toInt().toString();
+    } else {
+      s = result.toString();
+      if (s.length > 12) s = result.toStringAsPrecision(9);
+    }
+    return _addCommas(s);
+  }
+
+  void _calculate() {
+    try {
+      List<String> tokens = _expression.trim().split(' ');
+      if (tokens.length < 3) return;
+
+      _history = _expression;
+      List<dynamic> values = [];
+      for (var t in tokens) {
+        if (RegExp(r'[+×÷-]').hasMatch(t) && t.length == 1) {
+          values.add(t);
+        } else {
+          values.add(_parseToken(t));
+        }
+      }
+
+      for (int i = 0; i < values.length; i++) {
+        if (values[i] == '×' || values[i] == '÷') {
+          double left = values[i - 1];
+          double right = values[i + 1];
+          double res = (values[i] == '×') ? left * right : left / right;
+          values.removeAt(i - 1);
+          values.removeAt(i - 1);
+          values.removeAt(i - 1);
+          values.insert(i - 1, res);
+          i--;
+        }
+      }
+
+      double finalRes = values[0];
+      for (int i = 1; i < values.length; i += 2) {
+        String op = values[i];
+        double nextVal = values[i + 1];
+        if (op == '+') finalRes += nextVal;
+        if (op == '-') finalRes -= nextVal;
+      }
+
+      setState(() {
+        _expression = _formatResult(finalRes);
+        _isResultDisplayed = true;
+      });
+    } catch (e) {
+      setState(() {
+        _expression = 'Error';
+        _isResultDisplayed = true;
+      });
+    }
   }
 
   String _formatResult(double result) {
     if (result.isInfinite || result.isNaN) return 'Error';
-    String formatted;
-    if (result == result.toInt()) {
-      formatted = result.toInt().toString();
-    } else {
-      String str = result.toString();
-      formatted = str.length > 10 ? result.toStringAsPrecision(8) : str;
-    }
-    
+    String formatted = _formatValue(result);
     return result < 0 ? '($formatted)' : formatted;
   }
 
-  Widget _buildButton(String text, Color bgColor, Color textColor, {bool isWide = false}) {
+  Widget _buildButton(String text, Color bgColor, Color textColor) {
     return Expanded(
-      flex: isWide ? 2 : 1,
       child: Padding(
         padding: const EdgeInsets.all(6.0),
         child: InkWell(
@@ -136,11 +235,7 @@ class _CalculatorHomeState extends State<CalculatorHome> {
           borderRadius: BorderRadius.circular(50),
           child: Container(
             height: 70,
-            decoration: BoxDecoration(
-              color: bgColor,
-              shape: isWide ? BoxShape.rectangle : BoxShape.circle,
-              borderRadius: isWide ? BorderRadius.circular(50) : null,
-            ),
+            decoration: BoxDecoration(color: bgColor, shape: BoxShape.circle),
             child: Center(
               child: Text(
                 text,
@@ -166,16 +261,38 @@ class _CalculatorHomeState extends State<CalculatorHome> {
             Expanded(
               child: Container(
                 alignment: Alignment.bottomRight,
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                child: Text(
-                  _display,
-                  style: const TextStyle(
-                    fontSize: 70,
-                    fontWeight: FontWeight.w300,
-                    color: Colors.white,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    if (_history.isNotEmpty)
+                      SingleChildScrollView(
+                        reverse: true,
+                        scrollDirection: Axis.horizontal,
+                        child: Text(
+                          _history,
+                          style: const TextStyle(
+                            fontSize: 24,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      reverse: true,
+                      scrollDirection: Axis.horizontal,
+                      child: Text(
+                        _expression,
+                        style: TextStyle(
+                          fontSize: _expression.length > 10 ? 40 : 60,
+                          fontWeight: FontWeight.w300,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -185,7 +302,7 @@ class _CalculatorHomeState extends State<CalculatorHome> {
                   children: [
                     _buildButton('⌫', Colors.grey[600]!, Colors.white),
                     _buildButton(
-                      (_display == '0' || _shouldResetDisplay) ? 'AC' : 'C',
+                      (_expression == '0' || _isResultDisplayed) ? 'AC' : 'C',
                       Colors.grey[400]!,
                       Colors.black,
                     ),
