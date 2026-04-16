@@ -101,7 +101,9 @@ class _CalculatorHomeState extends State<CalculatorHome> {
       List<String> tokens = _expression.split(' ');
       String lastToken = tokens.last;
       if (lastToken.length > 1) {
-        if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
+        if (lastToken.endsWith('%')) {
+          tokens[tokens.length - 1] = lastToken.substring(0, lastToken.length - 1);
+        } else if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
           String numberPart = lastToken.substring(2, lastToken.length - 1).replaceAll(',', '');
           if (numberPart.length > 1) {
             tokens[tokens.length - 1] = '(-${_addCommas(numberPart.substring(0, numberPart.length - 1))})';
@@ -151,14 +153,24 @@ class _CalculatorHomeState extends State<CalculatorHome> {
 
   void _applyPercent() {
     List<String> tokens = _expression.trim().split(' ');
-    double val = _parseToken(tokens.last) / 100;
-    tokens[tokens.length - 1] = _formatResult(val);
-    _expression = tokens.join(' ');
+    String lastToken = tokens.last;
+    
+    // 마지막 토큰이 숫자이거나 괄호 음수일 때만 % 추가
+    if (lastToken.isNotEmpty && !lastToken.endsWith('%') && 
+        (RegExp(r'[0-9,.]+$').hasMatch(lastToken) || RegExp(r'^\(.*\)$').hasMatch(lastToken))) {
+      tokens[tokens.length - 1] = '$lastToken%';
+      _expression = tokens.join(' ');
+    }
   }
 
   double _parseToken(String token) {
     String clean = token.replaceAll('(', '').replaceAll(')', '').replaceAll(',', '');
-    return double.tryParse(clean) ?? 0;
+    bool isPercent = clean.endsWith('%');
+    if (isPercent) {
+      clean = clean.substring(0, clean.length - 1);
+    }
+    double val = double.tryParse(clean) ?? 0;
+    return isPercent ? val / 100 : val;
   }
 
   String _formatValue(double result) {
@@ -175,7 +187,18 @@ class _CalculatorHomeState extends State<CalculatorHome> {
   void _calculate() {
     try {
       List<String> tokens = _expression.trim().split(' ');
-      if (tokens.length < 3) return;
+      if (tokens.isEmpty) return;
+
+      // 단일 토큰(예: "88%") 계산 지원
+      if (tokens.length == 1) {
+        double val = _parseToken(tokens[0]);
+        setState(() {
+          _history = _expression;
+          _expression = _formatResult(val);
+          _isResultDisplayed = true;
+        });
+        return;
+      }
 
       _history = _expression;
       List<dynamic> values = [];
