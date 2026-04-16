@@ -58,25 +58,52 @@ class _CalculatorHomeState extends State<CalculatorHome> {
           }
         }
       } else if (text == '.') {
-        List<String> tokens = _expression.split(' ');
-        String lastToken = tokens.last.replaceAll(',', '');
-        if (!lastToken.contains('.')) {
-          if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
-            String numberPart = lastToken.substring(2, lastToken.length - 1);
-            tokens[tokens.length - 1] = '(-$numberPart.)';
-            _expression = tokens.join(' ');
-          } else {
-            _expression += '.';
+        if (_isResultDisplayed) {
+          _history = '';
+          _expression = '0.';
+          _isResultDisplayed = false;
+        } else {
+          List<String> tokens = _expression.split(' ');
+          String lastToken = tokens.last.replaceAll(',', '');
+          if (!lastToken.contains('.')) {
+            if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
+              String numberPart = lastToken.substring(2, lastToken.length - 1);
+              tokens[tokens.length - 1] = '(-$numberPart.)';
+              _expression = tokens.join(' ');
+            } else {
+              _expression += '.';
+            }
           }
         }
       } else if (text == '⌫') {
         _handleBackspace();
-      } else if (text == 'AC' || text == 'C') {
+      } else if (text == 'AC') {
         _expression = '0';
         _history = '';
         _isResultDisplayed = false;
         _lastOperator = null;
         _lastOperand = null;
+      } else if (text == 'C') {
+        List<String> tokens = _expression.trim().split(' ');
+        if (tokens.isNotEmpty && 
+            (RegExp(r'^[0-9,.]+$').hasMatch(tokens.last.replaceAll('(', '').replaceAll(')', '').replaceAll('%', ''))) && 
+            tokens.last != '0') {
+          // 마지막이 숫자면 숫자만 제거
+          tokens.removeLast();
+          if (tokens.isEmpty) {
+            _expression = '0';
+          } else {
+            // 연산자 뒤에 공백을 유지하기 위해 마지막에 공백 추가
+            _expression = '${tokens.join(' ')} ';
+          }
+        } else {
+          // 숫자가 아니거나 이미 비어있으면 전체 초기화
+          _expression = '0';
+          _history = '';
+          _isResultDisplayed = false;
+          _lastOperator = null;
+          _lastOperand = null;
+        }
       } else if (text == '+/-') {
         _toggleSign();
       } else if (text == '%') {
@@ -98,7 +125,11 @@ class _CalculatorHomeState extends State<CalculatorHome> {
           _expression = '${_expression.trim()} $text ';
         }
       } else if (text == '=') {
-        if (_isResultDisplayed && _lastOperator != null && _lastOperand != null) {
+        List<String> tokens = _expression.trim().split(' ');
+        if (tokens.length == 1 && _lastOperator != null && _lastOperand != null) {
+          // 숫자 하나만 입력된 상태에서 =을 누르면 직전 연산 적용
+          _repeatLastOperation();
+        } else if (_isResultDisplayed && _lastOperator != null && _lastOperand != null) {
           _repeatLastOperation();
         } else {
           _calculate();
@@ -216,25 +247,31 @@ class _CalculatorHomeState extends State<CalculatorHome> {
   }
 
   String _formatValue(double result) {
-    String fixed = result.toStringAsFixed(10);
-    double rounded = double.parse(fixed);
-    String s = rounded.toString();
-
-    if (!s.contains('e') && s.contains('.')) {
-      s = s.replaceAll(RegExp(r'0+$'), '');
-      if (s.endsWith('.')) s = s.substring(0, s.length - 1);
+    if (result == 0) return '0';
+    
+    String s;
+    double absRes = result.abs();
+    
+    // 매우 작거나 매우 큰 숫자는 지수 표기법 사용
+    if (absRes < 0.000001 || absRes > 999999999) {
+      s = result.toStringAsPrecision(7);
+    } else {
+      // 일반적인 숫자는 최대한 정밀하게 출력 후 불필요한 0 제거
+      s = result.toStringAsFixed(10);
+      if (s.contains('.')) {
+        s = s.replaceAll(RegExp(r'0+$'), '');
+        if (s.endsWith('.')) s = s.substring(0, s.length - 1);
+      }
     }
 
-    if (s.length > 13) {
-      s = result.toStringAsPrecision(9);
-      if (s.contains('e')) {
-        List<String> parts = s.split('e');
-        if (parts[0].contains('.')) {
-          parts[0] = parts[0].replaceAll(RegExp(r'0+$'), '');
-          if (parts[0].endsWith('.')) parts[0] = parts[0].substring(0, parts[0].length - 1);
-        }
-        s = parts.join('e');
+    // 지수 표기법 결과에서도 불필요한 0 제거 (예: 1.000e-10 -> 1e-10)
+    if (s.contains('e')) {
+      List<String> parts = s.split('e');
+      if (parts[0].contains('.')) {
+        parts[0] = parts[0].replaceAll(RegExp(r'0+$'), '');
+        if (parts[0].endsWith('.')) parts[0] = parts[0].substring(0, parts[0].length - 1);
       }
+      s = parts.join('e');
     }
     
     return _addCommas(s);
