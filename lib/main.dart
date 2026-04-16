@@ -48,34 +48,39 @@ class _CalculatorHomeState extends State<CalculatorHome> {
           _display += '.';
         }
       } else if (text == '⌫') {
-        if (_display.length > 1) {
+        if (_display.startsWith('(') && _display.endsWith(')')) {
+          _display = _display.substring(2, _display.length - 1);
+          if (_display.isEmpty) _display = '0';
+        } else if (_display.length > 1) {
           _display = _display.substring(0, _display.length - 1);
         } else {
           _display = '0';
         }
-      } else if (text == 'AC' || text == 'C') {
+      } else if (text == 'AC') {
         _display = '0';
         _firstOperand = null;
         _operator = null;
         _shouldResetDisplay = false;
+      } else if (text == 'C') {
+        _display = '0';
       } else if (text == '+/-') {
         if (_display != '0') {
-          if (_display.startsWith('-')) {
-            _display = _display.substring(1);
+          if (_display.startsWith('(') && _display.endsWith(')')) {
+            _display = _display.substring(2, _display.length - 1);
           } else {
-            _display = '-$_display';
+            _display = '(-$_display)';
           }
         }
       } else if (text == '%') {
-        double val = double.parse(_display) / 100;
+        double val = _parseDisplay(_display) / 100;
         _display = _formatResult(val);
       } else if (text == '+' || text == '-' || text == '×' || text == '÷') {
-        _firstOperand = double.parse(_display);
+        _firstOperand = _parseDisplay(_display);
         _operator = text;
         _shouldResetDisplay = true;
       } else if (text == '=') {
         if (_firstOperand != null && _operator != null) {
-          double secondOperand = double.parse(_display);
+          double secondOperand = _parseDisplay(_display);
           double result = 0;
           switch (_operator) {
             case '+':
@@ -100,16 +105,25 @@ class _CalculatorHomeState extends State<CalculatorHome> {
     });
   }
 
+  double _parseDisplay(String text) {
+    String cleanText = text;
+    if (text.startsWith('(') && text.endsWith(')')) {
+      cleanText = text.substring(1, text.length - 1);
+    }
+    return double.tryParse(cleanText) ?? 0;
+  }
+
   String _formatResult(double result) {
     if (result.isInfinite || result.isNaN) return 'Error';
+    String formatted;
     if (result == result.toInt()) {
-      return result.toInt().toString();
+      formatted = result.toInt().toString();
+    } else {
+      String str = result.toString();
+      formatted = str.length > 10 ? result.toStringAsPrecision(8) : str;
     }
-    String str = result.toString();
-    if (str.length > 10) {
-      return result.toStringAsPrecision(8);
-    }
-    return str;
+    
+    return result < 0 ? '($formatted)' : formatted;
   }
 
   Widget _buildButton(String text, Color bgColor, Color textColor, {bool isWide = false}) {
@@ -170,7 +184,11 @@ class _CalculatorHomeState extends State<CalculatorHome> {
                 Row(
                   children: [
                     _buildButton('⌫', Colors.grey[600]!, Colors.white),
-                    _buildButton('AC', Colors.grey[400]!, Colors.black),
+                    _buildButton(
+                      (_display == '0' || _shouldResetDisplay) ? 'AC' : 'C',
+                      Colors.grey[400]!,
+                      Colors.black,
+                    ),
                     _buildButton('%', Colors.grey[400]!, Colors.black),
                     _buildButton('÷', Colors.orange, Colors.white),
                   ],
