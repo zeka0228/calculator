@@ -32,6 +32,8 @@ class _CalculatorHomeState extends State<CalculatorHome> {
   String _expression = '0';
   String _history = '';
   bool _isResultDisplayed = false;
+  String? _lastOperator;
+  double? _lastOperand;
 
   void _onButtonPressed(String text) {
     setState(() {
@@ -73,9 +75,23 @@ class _CalculatorHomeState extends State<CalculatorHome> {
         _expression = '0';
         _history = '';
         _isResultDisplayed = false;
+        _lastOperator = null;
+        _lastOperand = null;
       } else if (text == '+/-') {
+        if (_isResultDisplayed) {
+          _isResultDisplayed = false;
+          _history = '';
+          _lastOperator = null;
+          _lastOperand = null;
+        }
         _toggleSign();
       } else if (text == '%') {
+        if (_isResultDisplayed) {
+          _isResultDisplayed = false;
+          _history = '';
+          _lastOperator = null;
+          _lastOperand = null;
+        }
         _applyPercent();
       } else if (text == '+' || text == '-' || text == '×' || text == '÷') {
         if (_isResultDisplayed) {
@@ -88,9 +104,34 @@ class _CalculatorHomeState extends State<CalculatorHome> {
           _expression = '${_expression.trim()} $text ';
         }
       } else if (text == '=') {
-        _calculate();
+        if (_isResultDisplayed && _lastOperator != null && _lastOperand != null) {
+          _repeatLastOperation();
+        } else {
+          _calculate();
+        }
       }
     });
+  }
+
+  void _repeatLastOperation() {
+    double currentVal = _parseToken(_expression);
+    double result = 0;
+    
+    if (_lastOperator == '%') {
+      result = currentVal / 100.0;
+      _history = "${_addCommas(_formatValue(currentVal))}%";
+    } else {
+      switch (_lastOperator) {
+        case '+': result = currentVal + _lastOperand!; break;
+        case '-': result = currentVal - _lastOperand!; break;
+        case '×': result = currentVal * _lastOperand!; break;
+        case '÷': result = currentVal / _lastOperand!; break;
+      }
+      _history = "${_addCommas(_formatValue(currentVal))} $_lastOperator ${_addCommas(_formatValue(_lastOperand!))}";
+    }
+    
+    _expression = _formatResult(result);
+    _isResultDisplayed = true;
   }
 
   void _handleBackspace() {
@@ -155,7 +196,6 @@ class _CalculatorHomeState extends State<CalculatorHome> {
     List<String> tokens = _expression.trim().split(' ');
     String lastToken = tokens.last;
     
-    // 마지막 토큰이 숫자이거나 괄호 음수일 때만 % 추가
     if (lastToken.isNotEmpty && !lastToken.endsWith('%') && 
         (RegExp(r'[0-9,.]+$').hasMatch(lastToken) || RegExp(r'^\(.*\)$').hasMatch(lastToken))) {
       tokens[tokens.length - 1] = '$lastToken%';
@@ -174,22 +214,17 @@ class _CalculatorHomeState extends State<CalculatorHome> {
   }
 
   String _formatValue(double result) {
-    // 부동소수점 오차를 줄이기 위해 우선 소수점 10자리까지 반올림
     String fixed = result.toStringAsFixed(10);
-    // double.parse().toString()을 사용하면 불필요한 trailing zeros가 자동으로 제거됨
     double rounded = double.parse(fixed);
     String s = rounded.toString();
 
-    // 지수 표기법(e)이 아니고 소수점이 있는 경우 한 번 더 정밀하게 처리
     if (!s.contains('e') && s.contains('.')) {
       s = s.replaceAll(RegExp(r'0+$'), '');
       if (s.endsWith('.')) s = s.substring(0, s.length - 1);
     }
 
-    // 너무 길어지는 경우 정밀도 조절
     if (s.length > 13) {
       s = result.toStringAsPrecision(9);
-      // 지수 표기법의 경우에도 불필요한 0 제거
       if (s.contains('e')) {
         List<String> parts = s.split('e');
         if (parts[0].contains('.')) {
@@ -206,22 +241,25 @@ class _CalculatorHomeState extends State<CalculatorHome> {
   void _calculate() {
     try {
       String trimmed = _expression.trim();
-      // 마지막이 연산자면 무시
       if (RegExp(r'[+×÷-]$').hasMatch(trimmed)) return;
 
       List<String> tokens = trimmed.split(' ');
       if (tokens.isEmpty) return;
-
-      // 단일 토큰(예: "88%") 계산 지원
-      if (tokens.length == 1) {
-        double val = _parseToken(tokens[0]);
-        setState(() {
-          _history = _expression;
-          _expression = _formatResult(val);
-          _isResultDisplayed = true;
-        });
-        return;
-      }
+// 단일 토큰(예: "88%") 계산 지원
+if (tokens.length == 1) {
+  double val = _parseToken(tokens[0]);
+  setState(() {
+    _history = _expression;
+    // 단일 %인 경우 반복 연산을 위해 % 연산자 저장
+    if (tokens[0].endsWith('%')) {
+      _lastOperator = '%';
+      _lastOperand = 100.0;
+    }
+    _expression = _formatResult(val);
+    _isResultDisplayed = true;
+  });
+  return;
+}
 
       _history = _expression;
       List<dynamic> values = [];
@@ -231,6 +269,12 @@ class _CalculatorHomeState extends State<CalculatorHome> {
         } else {
           values.add(_parseToken(t));
         }
+      }
+
+      // 마지막 연산 정보 저장 (반복 계산용)
+      if (tokens.length >= 3) {
+        _lastOperator = tokens[tokens.length - 2];
+        _lastOperand = _parseToken(tokens.last);
       }
 
       for (int i = 0; i < values.length; i++) {
