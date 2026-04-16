@@ -174,19 +174,42 @@ class _CalculatorHomeState extends State<CalculatorHome> {
   }
 
   String _formatValue(double result) {
-    String s;
-    if (result == result.toInt()) {
-      s = result.toInt().toString();
-    } else {
-      s = result.toString();
-      if (s.length > 12) s = result.toStringAsPrecision(9);
+    // 부동소수점 오차를 줄이기 위해 우선 소수점 10자리까지 반올림
+    String fixed = result.toStringAsFixed(10);
+    // double.parse().toString()을 사용하면 불필요한 trailing zeros가 자동으로 제거됨
+    double rounded = double.parse(fixed);
+    String s = rounded.toString();
+
+    // 지수 표기법(e)이 아니고 소수점이 있는 경우 한 번 더 정밀하게 처리
+    if (!s.contains('e') && s.contains('.')) {
+      s = s.replaceAll(RegExp(r'0+$'), '');
+      if (s.endsWith('.')) s = s.substring(0, s.length - 1);
     }
+
+    // 너무 길어지는 경우 정밀도 조절
+    if (s.length > 13) {
+      s = result.toStringAsPrecision(9);
+      // 지수 표기법의 경우에도 불필요한 0 제거
+      if (s.contains('e')) {
+        List<String> parts = s.split('e');
+        if (parts[0].contains('.')) {
+          parts[0] = parts[0].replaceAll(RegExp(r'0+$'), '');
+          if (parts[0].endsWith('.')) parts[0] = parts[0].substring(0, parts[0].length - 1);
+        }
+        s = parts.join('e');
+      }
+    }
+    
     return _addCommas(s);
   }
 
   void _calculate() {
     try {
-      List<String> tokens = _expression.trim().split(' ');
+      String trimmed = _expression.trim();
+      // 마지막이 연산자면 무시
+      if (RegExp(r'[+×÷-]$').hasMatch(trimmed)) return;
+
+      List<String> tokens = trimmed.split(' ');
       if (tokens.isEmpty) return;
 
       // 단일 토큰(예: "88%") 계산 지원
