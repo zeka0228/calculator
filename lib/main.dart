@@ -78,12 +78,6 @@ class _CalculatorHomeState extends State<CalculatorHome> {
         _lastOperator = null;
         _lastOperand = null;
       } else if (text == '+/-') {
-        if (_isResultDisplayed) {
-          _isResultDisplayed = false;
-          _history = '';
-          _lastOperator = null;
-          _lastOperand = null;
-        }
         _toggleSign();
       } else if (text == '%') {
         if (_isResultDisplayed) {
@@ -177,19 +171,27 @@ class _CalculatorHomeState extends State<CalculatorHome> {
   }
 
   void _toggleSign() {
-    List<String> tokens = _expression.trim().split(' ');
-    if (tokens.isEmpty) return;
+    setState(() {
+      List<String> tokens = _expression.trim().split(' ');
+      if (tokens.isEmpty) return;
 
-    String lastToken = tokens.last;
-    if (RegExp(r'^\(.*\)$').hasMatch(lastToken)) {
-      tokens[tokens.length - 1] = lastToken.substring(2, lastToken.length - 1);
-    } else {
-      String cleanNumber = lastToken.replaceAll(',', '');
-      if (double.tryParse(cleanNumber) != null && cleanNumber != '0') {
-        tokens[tokens.length - 1] = '(-$lastToken)';
+      String lastToken = tokens.last;
+      
+      // 1. 이미 음수(괄호형 또는 단순형)인 경우 양수로 전환
+      if (lastToken.startsWith('(-') && lastToken.endsWith(')')) {
+        tokens[tokens.length - 1] = lastToken.substring(2, lastToken.length - 1);
+      } else if (lastToken.startsWith('-')) {
+        tokens[tokens.length - 1] = lastToken.substring(1);
+      } 
+      // 2. 양수인 경우 음수로 전환 (항상 괄호 사용)
+      else {
+        String cleanNumber = lastToken.replaceAll(',', '');
+        if (double.tryParse(cleanNumber) != null && cleanNumber != '0') {
+          tokens[tokens.length - 1] = '(-$lastToken)';
+        }
       }
-    }
-    _expression = tokens.join(' ');
+      _expression = tokens.join(' ');
+    });
   }
 
   void _applyPercent() {
@@ -245,21 +247,20 @@ class _CalculatorHomeState extends State<CalculatorHome> {
 
       List<String> tokens = trimmed.split(' ');
       if (tokens.isEmpty) return;
-// 단일 토큰(예: "88%") 계산 지원
-if (tokens.length == 1) {
-  double val = _parseToken(tokens[0]);
-  setState(() {
-    _history = _expression;
-    // 단일 %인 경우 반복 연산을 위해 % 연산자 저장
-    if (tokens[0].endsWith('%')) {
-      _lastOperator = '%';
-      _lastOperand = 100.0;
-    }
-    _expression = _formatResult(val);
-    _isResultDisplayed = true;
-  });
-  return;
-}
+
+      if (tokens.length == 1) {
+        double val = _parseToken(tokens[0]);
+        setState(() {
+          _history = _expression;
+          if (tokens[0].endsWith('%')) {
+            _lastOperator = '%';
+            _lastOperand = 100.0;
+          }
+          _expression = _formatResult(val);
+          _isResultDisplayed = true;
+        });
+        return;
+      }
 
       _history = _expression;
       List<dynamic> values = [];
@@ -271,7 +272,6 @@ if (tokens.length == 1) {
         }
       }
 
-      // 마지막 연산 정보 저장 (반복 계산용)
       if (tokens.length >= 3) {
         _lastOperator = tokens[tokens.length - 2];
         _lastOperand = _parseToken(tokens.last);
@@ -312,8 +312,7 @@ if (tokens.length == 1) {
 
   String _formatResult(double result) {
     if (result.isInfinite || result.isNaN) return 'Error';
-    String formatted = _formatValue(result);
-    return result < 0 ? '($formatted)' : formatted;
+    return _formatValue(result);
   }
 
   Widget _buildButton(String text, Color bgColor, Color textColor) {
