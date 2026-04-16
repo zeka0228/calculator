@@ -71,12 +71,33 @@ class _CalculatorHomeState extends State<CalculatorHome> {
         }
       } else if (text == '⌫') {
         _handleBackspace();
-      } else if (text == 'AC' || text == 'C') {
+      } else if (text == 'AC') {
         _expression = '0';
         _history = '';
         _isResultDisplayed = false;
         _lastOperator = null;
         _lastOperand = null;
+      } else if (text == 'C') {
+        List<String> tokens = _expression.trim().split(' ');
+        if (tokens.isNotEmpty && 
+            (RegExp(r'^[0-9,.]+$').hasMatch(tokens.last.replaceAll('(', '').replaceAll(')', '').replaceAll('%', ''))) && 
+            tokens.last != '0') {
+          // 마지막이 숫자면 숫자만 제거
+          tokens.removeLast();
+          if (tokens.isEmpty) {
+            _expression = '0';
+          } else {
+            // 연산자 뒤에 공백을 유지하기 위해 마지막에 공백 추가
+            _expression = '${tokens.join(' ')} ';
+          }
+        } else {
+          // 숫자가 아니거나 이미 비어있으면 전체 초기화
+          _expression = '0';
+          _history = '';
+          _isResultDisplayed = false;
+          _lastOperator = null;
+          _lastOperand = null;
+        }
       } else if (text == '+/-') {
         _toggleSign();
       } else if (text == '%') {
