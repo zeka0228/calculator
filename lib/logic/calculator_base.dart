@@ -105,7 +105,8 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
   }
 
   String formatValue(double result) {
-    if (result.isInfinite || result.isNaN) return 'Error';
+    if (result.isInfinite) return '오버플로';
+    if (result.isNaN) return 'Error';
     if (result == 0) return '0';
     
     // 소수점 이하 자리수 처리

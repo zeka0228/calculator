@@ -155,9 +155,27 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       case 'tanh': toAppend = 'tanh('; isPrefixFunc = true; break;
       case 'ln': toAppend = 'ln('; isPrefixFunc = true; break;
       case 'log₁₀': toAppend = 'log(10,'; isPrefixFunc = true; break;
-      case 'x²': toAppend = '²'; break;
-      case 'x³': toAppend = '³'; break;
-      case 'xʸ': toAppend = '^'; break;
+      case 'x²': 
+        if (expression != '0') {
+          expression = '($expression)²';
+          return;
+        }
+        toAppend = '²'; 
+        break;
+      case 'x³': 
+        if (expression != '0') {
+          expression = '($expression)³';
+          return;
+        }
+        toAppend = '³'; 
+        break;
+      case 'xʸ': 
+        if (expression != '0' && !expression.endsWith('(')) {
+          expression = '($expression)^';
+          return;
+        }
+        toAppend = '^'; 
+        break;
       case 'eˣ': toAppend = 'e^'; break;
       case '10ˣ': toAppend = '10^'; break;
       case '1/x': 
