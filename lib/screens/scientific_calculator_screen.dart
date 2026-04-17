@@ -80,6 +80,10 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           .replaceAll('÷', '/')
           .replaceAll('π', '3.141592653589793')
           .replaceAll('e', '2.718281828459045')
+          ;
+      finalExpression = _convertCubeRoot(finalExpression);
+      finalExpression = finalExpression
+          .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
           .replaceAll('³', '^3')
           .replaceAll('ln(', 'log(');
@@ -197,8 +201,20 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           expression = '(1÷';
         }
         return;
-      case '²√x': toAppend = 'sqrt('; isPrefixFunc = true; break;
-      case '³√x': toAppend = 'nroot(3,'; isPrefixFunc = true; break;
+      case '²√x':
+        if (expression != '0') {
+          expression = '√($expression)';
+        } else {
+          expression = '√(';
+        }
+        return;
+      case '³√x':
+        if (expression != '0') {
+          expression = '³√($expression)';
+        } else {
+          expression = '³√(';
+        }
+        return;
       case 'ʸ√x': toAppend = 'nroot('; isPrefixFunc = true; break;
       case 'x!': toAppend = '!'; break;
       case 'π': 
@@ -238,6 +254,33 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     return missing > 0 ? missing : 0;
   }
 
+  /// ³√(내용) → (내용)^(1/3) 변환
+  String _convertCubeRoot(String expr) {
+    const prefix = '³√(';
+    StringBuffer result = StringBuffer();
+    int i = 0;
+    while (i < expr.length) {
+      if (expr.startsWith(prefix, i)) {
+        i += prefix.length;
+        // 매칭되는 닫는 괄호 찾기
+        int depth = 1;
+        int start = i;
+        while (i < expr.length && depth > 0) {
+          if (expr[i] == '(') depth++;
+          if (expr[i] == ')') depth--;
+          if (depth > 0) i++;
+        }
+        String inner = expr.substring(start, i);
+        result.write('($inner)^(1/3)');
+        if (i < expr.length) i++; // skip ')'
+      } else {
+        result.write(expr[i]);
+        i++;
+      }
+    }
+    return result.toString();
+  }
+
   void _calculateWithScientific() {
     try {
       String finalExpression = expression
@@ -245,9 +288,13 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           .replaceAll('÷', '/')
           .replaceAll('π', '3.141592653589793')
           .replaceAll('e', '2.718281828459045')
+          ;
+      finalExpression = _convertCubeRoot(finalExpression);
+      finalExpression = finalExpression
+          .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
           .replaceAll('³', '^3')
-          .replaceAll('ln(', 'log('); // math_expressions uses log for natural log
+          .replaceAll('ln(', 'log(');
       
       // Degree/Radian conversion
       if (!_isRad) {
