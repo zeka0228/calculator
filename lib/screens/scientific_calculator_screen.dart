@@ -46,50 +46,62 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
   }
 
   void _handleMemory(String op) {
+    if (op == 'mc') {
+      setState(() {
+        _memoryValue = 0;
+        _isMemorySet = false;
+      });
+      return;
+    }
+
+    if (op == 'mr') {
+      if (_isMemorySet) {
+        setState(() {
+          if (expression == '0' || isResultDisplayed) {
+            expression = formatValue(_memoryValue);
+          } else {
+            if (_shouldPrependMultiplication()) expression += '×';
+            expression += formatValue(_memoryValue);
+          }
+          isResultDisplayed = false;
+        });
+      }
+      return;
+    }
+
+    // m+ 또는 m- 인 경우
+    if (_isMemorySet) return; // 이미 메모리가 설정되어 있으면 무시
+
     double currentVal = 0;
     try {
-      // 마지막 토큰(숫자) 추출
-      String lastPart = expression.split(RegExp(r'[+\-×÷()^]')).last;
-      currentVal = parseToken(lastPart);
+      // 현재 수식 전체의 계산 결과를 가져옴
+      String finalExpression = expression
+          .replaceAll('×', '*')
+          .replaceAll('÷', '/')
+          .replaceAll('π', '3.141592653589793')
+          .replaceAll('e', '2.718281828459045')
+          .replaceAll('²', '^2')
+          .replaceAll('³', '^3')
+          .replaceAll('ln(', 'log(');
+
+      GrammarParser p = GrammarParser();
+      Expression exp = p.parse(finalExpression);
+      ContextModel cm = ContextModel();
+      currentVal = exp.evaluate(EvaluationType.REAL, cm);
     } catch (_) {
-      currentVal = 0;
+      // 파싱 실패 시 마지막 숫자만이라도 시도
+      try {
+        String lastPart = expression.split(RegExp(r'[+\-×÷()^]')).last;
+        currentVal = parseToken(lastPart);
+      } catch (_) {
+        currentVal = 0;
+      }
     }
 
-    if (expression == 'Error') currentVal = 0;
-
-    switch (op) {
-      case 'mc':
-        setState(() {
-          _memoryValue = 0;
-          _isMemorySet = false;
-        });
-        break;
-      case 'm+':
-        setState(() {
-          _memoryValue += currentVal;
-          _isMemorySet = true;
-        });
-        break;
-      case 'm-':
-        setState(() {
-          _memoryValue -= currentVal;
-          _isMemorySet = true;
-        });
-        break;
-      case 'mr':
-        if (_isMemorySet) {
-          setState(() {
-            if (expression == '0' || isResultDisplayed) {
-              expression = formatValue(_memoryValue);
-            } else {
-              if (_shouldPrependMultiplication()) expression += '×';
-              expression += formatValue(_memoryValue);
-            }
-            isResultDisplayed = false;
-          });
-        }
-        break;
-    }
+    setState(() {
+      _memoryValue = (op == 'm+') ? currentVal : -currentVal;
+      _isMemorySet = true;
+    });
   }
 
   void _handleParenthesis(String p) {
