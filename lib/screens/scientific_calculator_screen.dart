@@ -190,10 +190,13 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
         }
         toAppend = '10^'; 
         break;
-      case '1/x': 
-        if (_shouldPrependMultiplication()) expression += '×';
-        toAppend = '1/'; 
-        break;
+      case '1/x':
+        if (expression != '0') {
+          expression = '(1÷$expression)';
+        } else {
+          expression = '(1÷';
+        }
+        return;
       case '²√x': toAppend = 'sqrt('; isPrefixFunc = true; break;
       case '³√x': toAppend = 'nroot(3,'; isPrefixFunc = true; break;
       case 'ʸ√x': toAppend = 'nroot('; isPrefixFunc = true; break;
