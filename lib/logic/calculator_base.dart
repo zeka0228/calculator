@@ -91,6 +91,11 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
     }
   }
 
+  double parseToken(String token) {
+    String clean = token.replaceAll('(', '').replaceAll(')', '').replaceAll(',', '');
+    return double.tryParse(clean) ?? 0;
+  }
+
   String addCommas(String s) {
     if (s.isEmpty || s == 'Error') return s;
     List<String> parts = s.split('.');

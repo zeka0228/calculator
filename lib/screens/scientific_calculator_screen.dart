@@ -12,6 +12,8 @@ class ScientificCalculatorScreen extends StatefulWidget {
 
 class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen> with CalculatorBase {
   bool _isRad = true;
+  double _memoryValue = 0;
+  bool _isMemorySet = false;
 
   void _onButtonPressed(String text) {
     setState(() {
@@ -35,19 +37,93 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
         _calculateWithScientific();
       } else if (text == '(' || text == ')') {
         _handleParenthesis(text);
+      } else if (['mc', 'm+', 'm-', 'mr'].contains(text)) {
+        _handleMemory(text);
       } else {
         _handleScientificInput(text);
       }
     });
   }
 
-  void _handleParenthesis(String p) {
-    if (expression == '0' || isResultDisplayed) {
-      expression = p;
-      isResultDisplayed = false;
-    } else {
-      expression += p;
+  void _handleMemory(String op) {
+    double currentVal = 0;
+    try {
+      // 마지막 토큰(숫자) 추출
+      String lastPart = expression.split(RegExp(r'[+\-×÷()^]')).last;
+      currentVal = parseToken(lastPart);
+    } catch (_) {
+      currentVal = 0;
     }
+
+    if (expression == 'Error') currentVal = 0;
+
+    switch (op) {
+      case 'mc':
+        setState(() {
+          _memoryValue = 0;
+          _isMemorySet = false;
+        });
+        break;
+      case 'm+':
+        setState(() {
+          _memoryValue += currentVal;
+          _isMemorySet = true;
+        });
+        break;
+      case 'm-':
+        setState(() {
+          _memoryValue -= currentVal;
+          _isMemorySet = true;
+        });
+        break;
+      case 'mr':
+        if (_isMemorySet) {
+          setState(() {
+            if (expression == '0' || isResultDisplayed) {
+              expression = formatValue(_memoryValue);
+            } else {
+              if (_shouldPrependMultiplication()) expression += '×';
+              expression += formatValue(_memoryValue);
+            }
+            isResultDisplayed = false;
+          });
+        }
+        break;
+    }
+  }
+
+  void _handleParenthesis(String p) {
+    if (isResultDisplayed) {
+      if (p == '(') {
+        expression = p;
+        isResultDisplayed = false;
+      }
+      return;
+    }
+
+    if (p == '(') {
+      if (_shouldPrependMultiplication()) {
+        expression += '×';
+      }
+      if (expression == '0') {
+        expression = p;
+      } else {
+        expression += p;
+      }
+    } else if (p == ')') {
+      // 닫아야 할 괄호가 있고, 바로 앞이 여는 괄호가 아닐 때만 입력 허용
+      int missing = _getMissingParenthesesCount();
+      if (missing > 0 && !expression.endsWith('(')) {
+        expression += p;
+      }
+    }
+  }
+
+  bool _shouldPrependMultiplication() {
+    if (expression.isEmpty || expression == '0') return false;
+    String lastChar = expression.substring(expression.length - 1);
+    // 숫자, π, e, 닫는 괄호, 팩토리얼 뒤에는 곱셈 생략 시 자동 삽입
+    return RegExp(r'[0-9πe)!]$').hasMatch(lastChar);
   }
 
   void _handleScientificInput(String func) {
@@ -56,28 +132,42 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     }
 
     String toAppend = '';
+    bool isPrefixFunc = false; // sin(, log( 처럼 앞에 붙는 함수인지 여부
+
     switch (func) {
-      case 'sin': toAppend = 'sin('; break;
-      case 'cos': toAppend = 'cos('; break;
-      case 'tan': toAppend = 'tan('; break;
-      case 'sinh': toAppend = 'sinh('; break;
-      case 'cosh': toAppend = 'cosh('; break;
-      case 'tanh': toAppend = 'tanh('; break;
-      case 'ln': toAppend = 'ln('; break;
-      case 'log₁₀': toAppend = 'log(10,'; break; // math_expressions handles log(base, arg)
+      case 'sin': toAppend = 'sin('; isPrefixFunc = true; break;
+      case 'cos': toAppend = 'cos('; isPrefixFunc = true; break;
+      case 'tan': toAppend = 'tan('; isPrefixFunc = true; break;
+      case 'sinh': toAppend = 'sinh('; isPrefixFunc = true; break;
+      case 'cosh': toAppend = 'cosh('; isPrefixFunc = true; break;
+      case 'tanh': toAppend = 'tanh('; isPrefixFunc = true; break;
+      case 'ln': toAppend = 'ln('; isPrefixFunc = true; break;
+      case 'log₁₀': toAppend = 'log(10,'; isPrefixFunc = true; break;
       case 'x²': toAppend = '²'; break;
       case 'x³': toAppend = '³'; break;
       case 'xʸ': toAppend = '^'; break;
       case 'eˣ': toAppend = 'e^'; break;
       case '10ˣ': toAppend = '10^'; break;
-      case '1/x': toAppend = '1/'; break;
-      case '²√x': toAppend = 'sqrt('; break;
-      case '³√x': toAppend = 'nroot(3,'; break;
-      case 'ʸ√x': toAppend = 'nroot('; break;
+      case '1/x': 
+        if (_shouldPrependMultiplication()) expression += '×';
+        toAppend = '1/'; 
+        break;
+      case '²√x': toAppend = 'sqrt('; isPrefixFunc = true; break;
+      case '³√x': toAppend = 'nroot(3,'; isPrefixFunc = true; break;
+      case 'ʸ√x': toAppend = 'nroot('; isPrefixFunc = true; break;
       case 'x!': toAppend = '!'; break;
-      case 'π': toAppend = 'π'; break;
-      case 'e': toAppend = 'e'; break;
-      case 'Rand': toAppend = (DateTime.now().millisecond / 1000.0).toString(); break;
+      case 'π': 
+        if (_shouldPrependMultiplication()) expression += '×';
+        toAppend = 'π'; 
+        break;
+      case 'e': 
+        if (_shouldPrependMultiplication()) expression += '×';
+        toAppend = 'e'; 
+        break;
+      case 'Rand': 
+        if (_shouldPrependMultiplication()) expression += '×';
+        toAppend = (DateTime.now().millisecond / 1000.0).toString(); 
+        break;
       case 'EE': toAppend = '*10^'; break;
       case 'Rad': case 'Deg': 
         _isRad = !_isRad; 
@@ -85,11 +175,22 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       default: return;
     }
 
-    if (expression == '0') {
+    if (isPrefixFunc && _shouldPrependMultiplication()) {
+      expression += '×';
+    }
+
+    if (expression == '0' && (isPrefixFunc || toAppend == 'π' || toAppend == 'e')) {
       expression = toAppend;
     } else {
       expression += toAppend;
     }
+  }
+
+  int _getMissingParenthesesCount() {
+    int openCount = '('.allMatches(expression).length;
+    int closeCount = ')'.allMatches(expression).length;
+    int missing = openCount - closeCount;
+    return missing > 0 ? missing : 0;
   }
 
   void _calculateWithScientific() {
@@ -125,6 +226,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
   }
 
   Widget _buildExtraButton(String text) {
+    bool isMemoryActive = text == 'mr' && _isMemorySet;
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.all(3.0),
@@ -142,7 +244,11 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
               child: Text(
                 text,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 12, color: Colors.white70),
+                style: TextStyle(
+                  fontSize: 12,
+                  color: isMemoryActive ? Colors.orange : Colors.white70,
+                  fontWeight: isMemoryActive ? FontWeight.bold : FontWeight.normal,
+                ),
               ),
             ),
           ),
@@ -192,13 +298,26 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         reverse: true,
-                        child: Text(
-                          expression,
-                          style: TextStyle(
-                            fontSize: expression.length > 10 ? 40 : 60,
-                            fontWeight: FontWeight.w300,
-                            color: Colors.white,
-                          ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              expression,
+                              style: TextStyle(
+                                fontSize: expression.length > 10 ? 40 : 60,
+                                fontWeight: FontWeight.w300,
+                                color: Colors.white,
+                              ),
+                            ),
+                            Text(
+                              ')' * _getMissingParenthesesCount(),
+                              style: TextStyle(
+                                fontSize: expression.length > 10 ? 40 : 60,
+                                fontWeight: FontWeight.w300,
+                                color: Colors.white.withValues(alpha: 0.3),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
