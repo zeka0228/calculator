@@ -176,8 +176,20 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
         }
         toAppend = '^'; 
         break;
-      case 'eˣ': toAppend = 'e^'; break;
-      case '10ˣ': toAppend = '10^'; break;
+      case 'eˣ': 
+        if (expression != '0') {
+          expression = 'e^($expression)';
+          return;
+        }
+        toAppend = 'e^'; 
+        break;
+      case '10ˣ': 
+        if (expression != '0') {
+          expression = '10^($expression)';
+          return;
+        }
+        toAppend = '10^'; 
+        break;
       case '1/x': 
         if (_shouldPrependMultiplication()) expression += '×';
         toAppend = '1/'; 
@@ -250,9 +262,177 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       expression = formatValue(eval);
       isResultDisplayed = true;
     } catch (e) {
-      expression = 'Error';
+      String errMsg = e.toString().toLowerCase();
+      if (errMsg.contains('infinity') || errMsg.contains('overflow')) {
+        expression = '오버플로';
+      } else {
+        expression = 'Error';
+      }
       isResultDisplayed = true;
     }
+  }
+
+  /// expression 문자열을 파싱하여 ^ 뒤의 내용을 위첨자로 렌더링
+  Widget _buildExpressionDisplay() {
+    double baseFontSize = expression.length > 10 ? 40 : 60;
+    double superFontSize = baseFontSize * 0.55;
+    int missingParens = _getMissingParenthesesCount();
+
+    // 1) expression을 세그먼트로 분리: {text, isSuperscript}
+    List<_ExprSegment> segments = _parseExpressionSegments(expression);
+
+    // 2) ghost 괄호를 마지막 세그먼트에 맞게 추가
+    if (missingParens > 0) {
+      String ghost = ')' * missingParens;
+      if (segments.isNotEmpty && segments.last.isSuper) {
+        // 위첨자 구간이 열려있으면 ghost도 위첨자로
+        segments.add(_ExprSegment(ghost, true, true));
+      } else {
+        segments.add(_ExprSegment(ghost, false, true));
+      }
+    }
+
+    // 3) InlineSpan 리스트 생성
+    List<InlineSpan> spans = [];
+    for (final seg in segments) {
+      Color color = seg.isGhost
+          ? Colors.white.withValues(alpha: 0.3)
+          : Colors.white;
+
+      if (seg.isSuper) {
+        spans.add(WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: Transform.translate(
+            offset: Offset(0, -baseFontSize * 0.35),
+            child: Text(
+              seg.text,
+              style: TextStyle(
+                fontSize: superFontSize,
+                fontWeight: FontWeight.w300,
+                color: color,
+              ),
+            ),
+          ),
+        ));
+      } else {
+        spans.add(TextSpan(
+          text: seg.text,
+          style: TextStyle(
+            fontSize: baseFontSize,
+            fontWeight: FontWeight.w300,
+            color: color,
+          ),
+        ));
+      }
+    }
+
+    return RichText(text: TextSpan(children: spans));
+  }
+
+  /// history 문자열을 위첨자 포함하여 렌더링
+  Widget _buildHistoryDisplay() {
+    const double fontSize = 24;
+    const double superFontSize = fontSize * 0.55;
+    List<_ExprSegment> segments = _parseExpressionSegments(history);
+
+    List<InlineSpan> spans = [];
+    for (final seg in segments) {
+      if (seg.isSuper) {
+        spans.add(WidgetSpan(
+          alignment: PlaceholderAlignment.baseline,
+          baseline: TextBaseline.alphabetic,
+          child: Transform.translate(
+            offset: const Offset(0, -fontSize * 0.35),
+            child: Text(
+              seg.text,
+              style: const TextStyle(
+                fontSize: superFontSize,
+                fontWeight: FontWeight.w400,
+                color: Colors.grey,
+              ),
+            ),
+          ),
+        ));
+      } else {
+        spans.add(TextSpan(
+          text: seg.text,
+          style: const TextStyle(
+            fontSize: fontSize,
+            fontWeight: FontWeight.w400,
+            color: Colors.grey,
+          ),
+        ));
+      }
+    }
+
+    return RichText(text: TextSpan(children: spans));
+  }
+
+  /// expression 문자열을 일반 텍스트 / 위첨자 구간으로 분리
+  List<_ExprSegment> _parseExpressionSegments(String expr) {
+    List<_ExprSegment> result = [];
+    StringBuffer buf = StringBuffer();
+    bool inSuper = false;
+    int parenDepth = 0;
+
+    for (int i = 0; i < expr.length; i++) {
+      String ch = expr[i];
+
+      // ^ 를 만나면 일반 텍스트 flush 후 위첨자 모드 진입
+      if (!inSuper && ch == '^') {
+        if (buf.isNotEmpty) {
+          result.add(_ExprSegment(buf.toString(), false, false));
+          buf.clear();
+        }
+        inSuper = true;
+        parenDepth = 0;
+        continue; // ^ 자체는 표시하지 않음
+      }
+
+      if (inSuper) {
+        buf.write(ch);
+
+        if (ch == '(') {
+          parenDepth++;
+        } else if (ch == ')') {
+          if (parenDepth > 0) parenDepth--;
+          if (parenDepth == 0) {
+            // 괄호 그룹 닫힘 → 위첨자 끝
+            // 바깥 괄호 벗기기: "(내용)" → "내용"
+            String superText = buf.toString();
+            if (superText.startsWith('(') && superText.endsWith(')')) {
+              superText = superText.substring(1, superText.length - 1);
+            }
+            result.add(_ExprSegment(superText, true, false));
+            buf.clear();
+            inSuper = false;
+          }
+        } else if (parenDepth == 0) {
+          // 괄호 밖에서 숫자/점/π/e 가 아닌 문자 → 위첨자 종료
+          if (!RegExp(r'[0-9.πe]').hasMatch(ch)) {
+            // 현재 문자는 위첨자가 아님 → 되돌리기
+            String superText = buf.toString();
+            superText = superText.substring(0, superText.length - 1);
+            if (superText.isNotEmpty) {
+              result.add(_ExprSegment(superText, true, false));
+            }
+            buf.clear();
+            buf.write(ch);
+            inSuper = false;
+          }
+        }
+      } else {
+        buf.write(ch);
+      }
+    }
+
+    // 남은 버퍼 flush
+    if (buf.isNotEmpty) {
+      result.add(_ExprSegment(buf.toString(), inSuper, false));
+    }
+
+    return result;
   }
 
   Widget _buildExtraButton(String text) {
@@ -319,36 +499,13 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
                         SingleChildScrollView(
                           reverse: true,
                           scrollDirection: Axis.horizontal,
-                          child: Text(
-                            history,
-                            style: const TextStyle(fontSize: 24, color: Colors.grey, fontWeight: FontWeight.w400),
-                          ),
+                          child: _buildHistoryDisplay(),
                         ),
                       const SizedBox(height: 8),
                       SingleChildScrollView(
                         scrollDirection: Axis.horizontal,
                         reverse: true,
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              expression,
-                              style: TextStyle(
-                                fontSize: expression.length > 10 ? 40 : 60,
-                                fontWeight: FontWeight.w300,
-                                color: Colors.white,
-                              ),
-                            ),
-                            Text(
-                              ')' * _getMissingParenthesesCount(),
-                              style: TextStyle(
-                                fontSize: expression.length > 10 ? 40 : 60,
-                                fontWeight: FontWeight.w300,
-                                color: Colors.white.withValues(alpha: 0.3),
-                              ),
-                            ),
-                          ],
-                        ),
+                        child: _buildExpressionDisplay(),
                       ),
                     ],
                   ),
@@ -449,4 +606,12 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       ],
     );
   }
+}
+
+class _ExprSegment {
+  final String text;
+  final bool isSuper;
+  final bool isGhost;
+
+  _ExprSegment(this.text, this.isSuper, this.isGhost);
 }

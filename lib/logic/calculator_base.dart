@@ -141,7 +141,12 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
       expression = formatValue(eval);
       isResultDisplayed = true;
     } catch (e) {
-      expression = 'Error';
+      String errMsg = e.toString().toLowerCase();
+      if (errMsg.contains('infinity') || errMsg.contains('overflow')) {
+        expression = '오버플로';
+      } else {
+        expression = 'Error';
+      }
       isResultDisplayed = true;
     }
   }
