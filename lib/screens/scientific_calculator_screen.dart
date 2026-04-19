@@ -112,7 +112,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     double currentVal = 0;
     try {
       // 현재 수식 전체의 계산 결과를 가져옴
-      String finalExpression = _convertHyperbolic(expression)
+      String finalExpression = _convertHyperbolic(_convertScientificNotation(expression))
           .replaceAll('×', '*')
           .replaceAll('÷', '/')
           .replaceAll('π', '3.141592653589793')
@@ -321,7 +321,11 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
         if (_shouldPrependMultiplication()) expression += '×';
         toAppend = (DateTime.now().millisecond / 1000.0).toString(); 
         break;
-      case 'EE': toAppend = '*10^'; break;
+      case 'EE':
+        if (expression == '0' || expression.isEmpty) return;
+        if (expression.endsWith('e')) return;
+        expression += 'e';
+        return;
       case 'Rad': case 'Deg': 
         _isRad = !_isRad; 
         return;
@@ -395,6 +399,19 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       i++;
     }
     return result.toString();
+  }
+
+  /// 과학 표기(3e5 → (3*10^(5))) 변환. 숫자 바로 뒤의 e를 지수 표기로 해석.
+  /// 뒤에 지수가 없는 dangling e(예: "3e")는 미완성으로 간주해 예외 발생.
+  String _convertScientificNotation(String expr) {
+    String converted = expr.replaceAllMapped(
+      RegExp(r'(\d+(?:\.\d+)?)e([+-]?\d+)'),
+      (m) => '(${m[1]}*10^(${m[2]}))',
+    );
+    if (RegExp(r'\de').hasMatch(converted)) {
+      throw const FormatException('Incomplete scientific notation');
+    }
+    return converted;
   }
 
   /// sinh/cosh/tanh(x)를 e^x 기반 정체성으로 변환.
@@ -480,7 +497,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
 
     if (!prepareEquals()) return;
     try {
-      String finalExpression = _convertHyperbolic(expression)
+      String finalExpression = _convertHyperbolic(_convertScientificNotation(expression))
           .replaceAll('×', '*')
           .replaceAll('÷', '/')
           .replaceAll('π', '3.141592653589793')
