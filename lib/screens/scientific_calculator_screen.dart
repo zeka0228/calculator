@@ -394,6 +394,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
   }
 
   void _calculateWithScientific() {
+    if (!prepareEquals()) return;
     try {
       String finalExpression = expression
           .replaceAll('×', '*')

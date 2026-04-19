@@ -5,6 +5,52 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
   String expression = '0';
   String history = '';
   bool isResultDisplayed = false;
+  String? lastOp;
+  String? lastOperandStr;
+
+  /// 현재 수식에서 최상위 마지막 이항 연산자와 우항을 추출해 lastOp/lastOperandStr에 저장.
+  /// 우항이 단순 숫자가 아니면 둘 다 null.
+  void extractLastOp() {
+    int depth = 0;
+    for (int i = expression.length - 1; i >= 0; i--) {
+      String ch = expression[i];
+      if (ch == ')') {
+        depth++;
+      } else if (ch == '(') {
+        depth--;
+      } else if (depth == 0 && (ch == '+' || ch == '-' || ch == '×' || ch == '÷')) {
+        if (ch == '-') {
+          if (i == 0) continue;
+          String prev = expression[i - 1];
+          if ('+-×÷(^'.contains(prev)) continue;
+        }
+        String operand = expression.substring(i + 1);
+        if (RegExp(r'^-?\d+(\.\d+)?$').hasMatch(operand)) {
+          lastOp = ch;
+          lastOperandStr = operand;
+        } else {
+          lastOp = null;
+          lastOperandStr = null;
+        }
+        return;
+      }
+    }
+    lastOp = null;
+    lastOperandStr = null;
+  }
+
+  /// =을 누르기 직전에 호출. 반복 모드로 진입할 수 있으면 수식에 lastOp를 덧붙이고 true 반환.
+  /// 반환값이 false면 =을 무시해야 함.
+  bool prepareEquals() {
+    if (isResultDisplayed) {
+      if (lastOp == null || lastOperandStr == null) return false;
+      expression = expression + lastOp! + lastOperandStr!;
+      isResultDisplayed = false;
+      return true;
+    }
+    extractLastOp();
+    return true;
+  }
 
   void handleNumber(String text) {
     if (expression == '0' || isResultDisplayed) {
@@ -47,6 +93,7 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
   }
 
   void handleEquals() {
+    if (!prepareEquals()) return;
     calculateAdvanced();
   }
 
@@ -54,6 +101,8 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
     expression = '0';
     history = '';
     isResultDisplayed = false;
+    lastOp = null;
+    lastOperandStr = null;
   }
 
   void clearEntry() {
