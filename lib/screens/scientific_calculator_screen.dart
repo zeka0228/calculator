@@ -414,6 +414,11 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           expression = 'log(';
           return;
         }
+        // 열린 괄호로 끝나면 (log( 이나 log(log(...) 체이닝) 그대로 log( 이어붙임
+        if (expression.endsWith('(')) {
+          expression += 'log(';
+          return;
+        }
         expression = 'log($expression)';
         _awaitingPending = true;
         _pendingPrefix = 'log(';
