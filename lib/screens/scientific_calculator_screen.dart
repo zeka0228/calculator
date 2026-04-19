@@ -12,46 +12,66 @@ class ScientificCalculatorScreen extends StatefulWidget {
 
 class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen> with CalculatorBase {
   bool _isRad = true;
+  bool _is2nd = false;
   double _memoryValue = 0;
   bool _isMemorySet = false;
-  bool _awaitingRootDegree = false;
-  int _rootDegreeInsertPos = 0;
+
+  // 펜딩 입력 상태 (y 같은 보조 인자를 나중에 입력받는 함수용)
+  bool _awaitingPending = false;
+  String _pendingPrefix = ''; // unwrap 시 제거할 앞부분
+  String _pendingSuffix = ''; // unwrap 시 제거할 뒷부분
+  int _pendingStart = 0; // 사용자 입력이 시작되는 위치
+  int _pendingPos = 0; // 현재 삽입 위치
+  bool _pendingSubscript = false; // 입력 숫자를 아래첨자로 변환할지 여부
 
   void _onButtonPressed(String text) {
     setState(() {
-      if (_awaitingRootDegree) {
-        if (RegExp(r'^[0-9]$').hasMatch(text)) {
-          expression = expression.substring(0, _rootDegreeInsertPos) +
-              text +
-              expression.substring(_rootDegreeInsertPos);
-          _rootDegreeInsertPos += 1;
+      if (_awaitingPending) {
+        // logᵧ 펜딩 중 또 logᵧ를 누르면 바깥 log로 감싸되 펜딩은 안쪽(기존 대상)에 유지
+        if (_pendingSubscript && text == 'logᵧ' &&
+            expression != '0' && expression.isNotEmpty) {
+          expression = 'log($expression)';
+          _pendingStart += 4;
+          _pendingPos += 4;
           return;
         }
-        if (text == '.') {
-          String yPart = expression.substring(0, _rootDegreeInsertPos);
+        if (RegExp(r'^[0-9]$').hasMatch(text)) {
+          String toInsert = _pendingSubscript ? _toSubscript(text) : text;
+          expression = expression.substring(0, _pendingPos) +
+              toInsert +
+              expression.substring(_pendingPos);
+          _pendingPos += 1;
+          return;
+        }
+        if (text == '.' && !_pendingSubscript) {
+          String yPart = expression.substring(_pendingStart, _pendingPos);
           if (!yPart.contains('.')) {
-            expression = expression.substring(0, _rootDegreeInsertPos) +
+            expression = expression.substring(0, _pendingPos) +
                 text +
-                expression.substring(_rootDegreeInsertPos);
-            _rootDegreeInsertPos += 1;
+                expression.substring(_pendingPos);
+            _pendingPos += 1;
           }
           return;
         }
         if (text == '⌫') {
-          if (_rootDegreeInsertPos > 0) {
-            expression = expression.substring(0, _rootDegreeInsertPos - 1) +
-                expression.substring(_rootDegreeInsertPos);
-            _rootDegreeInsertPos -= 1;
+          if (_pendingPos > _pendingStart) {
+            expression = expression.substring(0, _pendingPos - 1) +
+                expression.substring(_pendingPos);
+            _pendingPos -= 1;
           } else {
-            if (expression.startsWith('√(') && expression.endsWith(')')) {
-              expression = expression.substring(2, expression.length - 1);
+            if (_pendingPrefix.isNotEmpty &&
+                expression.startsWith(_pendingPrefix) &&
+                expression.endsWith(_pendingSuffix)) {
+              expression = expression.substring(
+                  _pendingPrefix.length,
+                  expression.length - _pendingSuffix.length);
               if (expression.isEmpty) expression = '0';
             }
-            _awaitingRootDegree = false;
+            _awaitingPending = false;
           }
           return;
         }
-        _awaitingRootDegree = false;
+        _awaitingPending = false;
       }
 
       if (RegExp(r'^[0-9]$').hasMatch(text)) {
@@ -112,7 +132,13 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     double currentVal = 0;
     try {
       // 현재 수식 전체의 계산 결과를 가져옴
-      String preprocessed = _convertHyperbolic(_convertScientificNotation(expression));
+      String preprocessed = _convertScientificNotation(expression);
+      preprocessed = _convertInverseHyperbolic(preprocessed);
+      preprocessed = _convertHyperbolic(preprocessed);
+      preprocessed = preprocessed
+          .replaceAll('sin⁻¹(', 'arcsin(')
+          .replaceAll('cos⁻¹(', 'arccos(')
+          .replaceAll('tan⁻¹(', 'arctan(');
       if (!_isRad) {
         preprocessed = _convertDegrees(preprocessed);
       }
@@ -124,8 +150,8 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           ;
       finalExpression = _convertCubeRoot(finalExpression);
       finalExpression = _convertNRoot(finalExpression);
+      finalExpression = _convertLogSubscript(finalExpression);
       finalExpression = finalExpression
-          .replaceAll('log₁₀(', 'log(10,')
           .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
           .replaceAll('³', '^3');
@@ -173,8 +199,34 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       int missing = _getMissingParenthesesCount();
       if (missing > 0 && !expression.endsWith('(')) {
         expression += p;
+        _activateLogSubscriptIfClosed();
       }
     }
+  }
+
+  /// 방금 닫은 ')'가 'log(' 여는 괄호와 매칭되면 아래첨자 입력 펜딩 활성화.
+  void _activateLogSubscriptIfClosed() {
+    if (!expression.endsWith(')')) return;
+    int depth = 1;
+    int i = expression.length - 2;
+    while (i >= 0 && depth > 0) {
+      if (expression[i] == ')') {
+        depth++;
+      } else if (expression[i] == '(') {
+        depth--;
+      }
+      if (depth > 0) i--;
+    }
+    if (i < 3) return;
+    if (expression.substring(i - 3, i) != 'log') return;
+    // 'log' 앞에 글자가 이어져 있으면(예: 존재하지 않지만 혹시 'arclog' 같은) 건드리지 않음
+    if (i - 3 > 0 && RegExp(r'[a-zA-Z]').hasMatch(expression[i - 4])) return;
+    _awaitingPending = true;
+    _pendingPrefix = 'log(';
+    _pendingSuffix = ')';
+    _pendingStart = i;
+    _pendingPos = i;
+    _pendingSubscript = true;
   }
 
   bool _shouldPrependMultiplication() {
@@ -309,8 +361,12 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           return;
         }
         expression = '√($expression)';
-        _awaitingRootDegree = true;
-        _rootDegreeInsertPos = 0;
+        _awaitingPending = true;
+        _pendingPrefix = '√(';
+        _pendingSuffix = ')';
+        _pendingStart = 0;
+        _pendingPos = 0;
+        _pendingSubscript = false;
         return;
       case 'x!': toAppend = '!'; break;
       case 'π': 
@@ -330,8 +386,90 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
         if (expression.endsWith('e')) return;
         expression += 'e';
         return;
-      case 'Rad': case 'Deg': 
-        _isRad = !_isRad; 
+      case 'Rad': case 'Deg':
+        _isRad = !_isRad;
+        return;
+      case '2ⁿᵈ':
+        _is2nd = !_is2nd;
+        return;
+      case 'yˣ':
+        if (expression == '0' || expression.isEmpty) return;
+        expression = '^($expression)';
+        _awaitingPending = true;
+        _pendingPrefix = '^(';
+        _pendingSuffix = ')';
+        _pendingStart = 0;
+        _pendingPos = 0;
+        _pendingSubscript = false;
+        return;
+      case '2ˣ':
+        if (expression != '0') {
+          expression = '2^($expression)';
+          return;
+        }
+        toAppend = '2^';
+        break;
+      case 'logᵧ':
+        if (expression == '0' || expression.isEmpty) {
+          expression = 'log(';
+          return;
+        }
+        expression = 'log($expression)';
+        _awaitingPending = true;
+        _pendingPrefix = 'log(';
+        _pendingSuffix = ')';
+        _pendingStart = 3; // 'log' 바로 뒤
+        _pendingPos = 3;
+        _pendingSubscript = true;
+        return;
+      case 'log₂':
+        if (expression != '0') {
+          expression = 'log₂($expression)';
+        } else {
+          expression = 'log₂(';
+        }
+        return;
+      case 'sin⁻¹':
+        if (expression != '0') {
+          expression = 'sin⁻¹($expression)';
+        } else {
+          expression = 'sin⁻¹(';
+        }
+        return;
+      case 'cos⁻¹':
+        if (expression != '0') {
+          expression = 'cos⁻¹($expression)';
+        } else {
+          expression = 'cos⁻¹(';
+        }
+        return;
+      case 'tan⁻¹':
+        if (expression != '0') {
+          expression = 'tan⁻¹($expression)';
+        } else {
+          expression = 'tan⁻¹(';
+        }
+        return;
+      case 'sinh⁻¹':
+        if (expression != '0') {
+          expression = 'sinh⁻¹($expression)';
+        } else {
+          expression = 'sinh⁻¹(';
+        }
+        return;
+      case 'cosh⁻¹':
+        if (expression != '0') {
+          expression = 'cosh⁻¹($expression)';
+        } else {
+          expression = 'cosh⁻¹(';
+        }
+        return;
+      case 'tanh⁻¹':
+        if (expression != '0') {
+          expression = 'tanh⁻¹($expression)';
+        } else {
+          expression = 'tanh⁻¹(';
+        }
         return;
       default: return;
     }
@@ -405,24 +543,87 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     return result.toString();
   }
 
-  /// Deg 모드일 때 sin/cos/tan 인자를 도→라디안으로 변환.
-  /// sin(x) → sin((x)*π/180). sinh 등 다른 이름 함수는 건드리지 않음.
+  String _toSubscript(String digit) {
+    const map = {
+      '0': '₀', '1': '₁', '2': '₂', '3': '₃', '4': '₄',
+      '5': '₅', '6': '₆', '7': '₇', '8': '₈', '9': '₉',
+    };
+    return map[digit] ?? digit;
+  }
+
+  /// log 아래첨자 처리: log(x) → ln(x), log₂(x) → log(2,x), log₁₀(x) → log(10,x) 등.
+  String _convertLogSubscript(String expr) {
+    return expr.replaceAllMapped(
+      RegExp(r'log([₀₁₂₃₄₅₆₇₈₉]*)\('),
+      (m) {
+        String subDigits = m[1]!;
+        if (subDigits.isEmpty) {
+          return 'ln(';
+        }
+        String base = subDigits
+            .replaceAll('₀', '0')
+            .replaceAll('₁', '1')
+            .replaceAll('₂', '2')
+            .replaceAll('₃', '3')
+            .replaceAll('₄', '4')
+            .replaceAll('₅', '5')
+            .replaceAll('₆', '6')
+            .replaceAll('₇', '7')
+            .replaceAll('₈', '8')
+            .replaceAll('₉', '9');
+        return 'log($base,';
+      },
+    );
+  }
+
+  /// Deg 모드일 때 sin/cos/tan 인자를 도→라디안으로 변환하고,
+  /// arcsin/arccos/arctan 결과를 라디안→도로 변환.
   String _convertDegrees(String expr) {
-    const funcs = ['sin(', 'cos(', 'tan('];
+    const argFuncs = ['sin(', 'cos(', 'tan('];
+    const resultFuncs = ['arcsin(', 'arccos(', 'arctan('];
     StringBuffer result = StringBuffer();
     int i = 0;
     while (i < expr.length) {
-      String? matched;
-      for (String f in funcs) {
+      bool precededByLetter = i > 0 && RegExp(r'[a-zA-Z]').hasMatch(expr[i - 1]);
+
+      // arcsin/arccos/arctan: 결과에 *180/π 적용
+      String? resMatch;
+      for (String f in resultFuncs) {
         if (expr.startsWith(f, i)) {
-          matched = f;
+          resMatch = f;
           break;
         }
       }
-      bool precededByLetter = i > 0 && RegExp(r'[a-zA-Z]').hasMatch(expr[i - 1]);
-      if (matched != null && !precededByLetter) {
-        String name = matched.substring(0, matched.length - 1);
-        i += matched.length;
+      if (resMatch != null && !precededByLetter) {
+        String name = resMatch.substring(0, resMatch.length - 1);
+        i += resMatch.length;
+        int depth = 1;
+        int start = i;
+        while (i < expr.length && depth > 0) {
+          if (expr[i] == '(') {
+            depth++;
+          } else if (expr[i] == ')') {
+            depth--;
+          }
+          if (depth > 0) i++;
+        }
+        String inner = _convertDegrees(expr.substring(start, i));
+        result.write('($name($inner)*180/π)');
+        if (i < expr.length) i++;
+        continue;
+      }
+
+      // sin/cos/tan: 인자를 *π/180 래핑
+      String? argMatch;
+      for (String f in argFuncs) {
+        if (expr.startsWith(f, i)) {
+          argMatch = f;
+          break;
+        }
+      }
+      if (argMatch != null && !precededByLetter) {
+        String name = argMatch.substring(0, argMatch.length - 1);
+        i += argMatch.length;
         int depth = 1;
         int start = i;
         while (i < expr.length && depth > 0) {
@@ -435,6 +636,58 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
         }
         String inner = _convertDegrees(expr.substring(start, i));
         result.write('$name(($inner)*π/180)');
+        if (i < expr.length) i++;
+        continue;
+      }
+
+      result.write(expr[i]);
+      i++;
+    }
+    return result.toString();
+  }
+
+  /// sinh⁻¹/cosh⁻¹/tanh⁻¹(x)를 ln 기반 정체성으로 변환.
+  /// e 치환 이전에 호출되어 π/e를 심볼 그대로 사용 가능.
+  String _convertInverseHyperbolic(String expr) {
+    const funcs = ['sinh⁻¹(', 'cosh⁻¹(', 'tanh⁻¹('];
+    StringBuffer result = StringBuffer();
+    int i = 0;
+    while (i < expr.length) {
+      String? matched;
+      for (String f in funcs) {
+        if (expr.startsWith(f, i)) {
+          matched = f;
+          break;
+        }
+      }
+      if (matched != null) {
+        String name = matched.substring(0, matched.length - 1);
+        i += matched.length;
+        int depth = 1;
+        int start = i;
+        while (i < expr.length && depth > 0) {
+          if (expr[i] == '(') {
+            depth++;
+          } else if (expr[i] == ')') {
+            depth--;
+          }
+          if (depth > 0) i++;
+        }
+        String inner = _convertInverseHyperbolic(expr.substring(start, i));
+        switch (name) {
+          case 'sinh⁻¹':
+            // arcsinh(x) = ln(x + sqrt(x^2 + 1))
+            result.write('ln(($inner)+sqrt(($inner)^2+1))');
+            break;
+          case 'cosh⁻¹':
+            // arccosh(x) = ln(x + sqrt(x^2 - 1))
+            result.write('ln(($inner)+sqrt(($inner)^2-1))');
+            break;
+          case 'tanh⁻¹':
+            // arctanh(x) = 0.5 * ln((1+x)/(1-x))
+            result.write('(ln((1+($inner))/(1-($inner)))/2)');
+            break;
+        }
         if (i < expr.length) i++;
       } else {
         result.write(expr[i]);
@@ -540,7 +793,13 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
 
     if (!prepareEquals()) return;
     try {
-      String preprocessed = _convertHyperbolic(_convertScientificNotation(expression));
+      String preprocessed = _convertScientificNotation(expression);
+      preprocessed = _convertInverseHyperbolic(preprocessed);
+      preprocessed = _convertHyperbolic(preprocessed);
+      preprocessed = preprocessed
+          .replaceAll('sin⁻¹(', 'arcsin(')
+          .replaceAll('cos⁻¹(', 'arccos(')
+          .replaceAll('tan⁻¹(', 'arctan(');
       if (!_isRad) {
         preprocessed = _convertDegrees(preprocessed);
       }
@@ -552,8 +811,8 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           ;
       finalExpression = _convertCubeRoot(finalExpression);
       finalExpression = _convertNRoot(finalExpression);
+      finalExpression = _convertLogSubscript(finalExpression);
       finalExpression = finalExpression
-          .replaceAll('log₁₀(', 'log(10,')
           .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
           .replaceAll('³', '^3');
@@ -784,6 +1043,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
 
   Widget _buildExtraButton(String text) {
     bool isMemoryActive = text == 'mr' && _isMemorySet;
+    bool is2ndActive = text == '2ⁿᵈ' && _is2nd;
     return Expanded(
       child: Padding(
         padding: const EdgeInsets.all(3.0),
@@ -793,7 +1053,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           child: Container(
             height: 36,
             decoration: BoxDecoration(
-              color: Colors.grey[900],
+              color: is2ndActive ? Colors.orange : Colors.grey[900],
               borderRadius: BorderRadius.circular(20),
               border: Border.all(color: Colors.grey[800]!),
             ),
@@ -803,8 +1063,10 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
                 textAlign: TextAlign.center,
                 style: TextStyle(
                   fontSize: 12,
-                  color: isMemoryActive ? Colors.orange : Colors.white70,
-                  fontWeight: isMemoryActive ? FontWeight.bold : FontWeight.normal,
+                  color: isMemoryActive
+                      ? Colors.orange
+                      : (is2ndActive ? Colors.black : Colors.white70),
+                  fontWeight: (isMemoryActive || is2ndActive) ? FontWeight.bold : FontWeight.normal,
                 ),
               ),
             ),
@@ -874,25 +1136,35 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
               Row(
                 children: [
                   _buildExtraButton('2ⁿᵈ'), _buildExtraButton('x²'), _buildExtraButton('x³'),
-                  _buildExtraButton('xʸ'), _buildExtraButton('eˣ'), _buildExtraButton('10ˣ'),
+                  _buildExtraButton('xʸ'),
+                  _buildExtraButton(_is2nd ? 'yˣ' : 'eˣ'),
+                  _buildExtraButton(_is2nd ? '2ˣ' : '10ˣ'),
                 ],
               ),
               Row(
                 children: [
                   _buildExtraButton('1/x'), _buildExtraButton('²√x'), _buildExtraButton('³√x'),
-                  _buildExtraButton('ʸ√x'), _buildExtraButton('ln'), _buildExtraButton('log₁₀'),
+                  _buildExtraButton('ʸ√x'),
+                  _buildExtraButton(_is2nd ? 'logᵧ' : 'ln'),
+                  _buildExtraButton(_is2nd ? 'log₂' : 'log₁₀'),
                 ],
               ),
               Row(
                 children: [
-                  _buildExtraButton('x!'), _buildExtraButton('sin'), _buildExtraButton('cos'),
-                  _buildExtraButton('tan'), _buildExtraButton('e'), _buildExtraButton('EE'),
+                  _buildExtraButton('x!'),
+                  _buildExtraButton(_is2nd ? 'sin⁻¹' : 'sin'),
+                  _buildExtraButton(_is2nd ? 'cos⁻¹' : 'cos'),
+                  _buildExtraButton(_is2nd ? 'tan⁻¹' : 'tan'),
+                  _buildExtraButton('e'), _buildExtraButton('EE'),
                 ],
               ),
               Row(
                 children: [
-                  _buildExtraButton('Rand'), _buildExtraButton('sinh'), _buildExtraButton('cosh'),
-                  _buildExtraButton('tanh'), _buildExtraButton('π'), _buildExtraButton(_isRad ? 'Rad' : 'Deg'),
+                  _buildExtraButton('Rand'),
+                  _buildExtraButton(_is2nd ? 'sinh⁻¹' : 'sinh'),
+                  _buildExtraButton(_is2nd ? 'cosh⁻¹' : 'cosh'),
+                  _buildExtraButton(_is2nd ? 'tanh⁻¹' : 'tanh'),
+                  _buildExtraButton('π'), _buildExtraButton(_isRad ? 'Rad' : 'Deg'),
                 ],
               ),
             ],
