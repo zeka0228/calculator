@@ -14,9 +14,46 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
   bool _isRad = true;
   double _memoryValue = 0;
   bool _isMemorySet = false;
+  bool _awaitingRootDegree = false;
+  int _rootDegreeInsertPos = 0;
 
   void _onButtonPressed(String text) {
     setState(() {
+      if (_awaitingRootDegree) {
+        if (RegExp(r'^[0-9]$').hasMatch(text)) {
+          expression = expression.substring(0, _rootDegreeInsertPos) +
+              text +
+              expression.substring(_rootDegreeInsertPos);
+          _rootDegreeInsertPos += 1;
+          return;
+        }
+        if (text == '.') {
+          String yPart = expression.substring(0, _rootDegreeInsertPos);
+          if (!yPart.contains('.')) {
+            expression = expression.substring(0, _rootDegreeInsertPos) +
+                text +
+                expression.substring(_rootDegreeInsertPos);
+            _rootDegreeInsertPos += 1;
+          }
+          return;
+        }
+        if (text == '⌫') {
+          if (_rootDegreeInsertPos > 0) {
+            expression = expression.substring(0, _rootDegreeInsertPos - 1) +
+                expression.substring(_rootDegreeInsertPos);
+            _rootDegreeInsertPos -= 1;
+          } else {
+            if (expression.startsWith('√(') && expression.endsWith(')')) {
+              expression = expression.substring(2, expression.length - 1);
+              if (expression.isEmpty) expression = '0';
+            }
+            _awaitingRootDegree = false;
+          }
+          return;
+        }
+        _awaitingRootDegree = false;
+      }
+
       if (RegExp(r'^[0-9]$').hasMatch(text)) {
         handleNumber(text);
       } else if (text == '.') {
@@ -82,6 +119,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           .replaceAll('e', '2.718281828459045')
           ;
       finalExpression = _convertCubeRoot(finalExpression);
+      finalExpression = _convertNRoot(finalExpression);
       finalExpression = finalExpression
           .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
@@ -215,7 +253,14 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           expression = '³√(';
         }
         return;
-      case 'ʸ√x': toAppend = 'nroot('; isPrefixFunc = true; break;
+      case 'ʸ√x':
+        if (expression == '0' || expression.isEmpty) {
+          return;
+        }
+        expression = '√($expression)';
+        _awaitingRootDegree = true;
+        _rootDegreeInsertPos = 0;
+        return;
       case 'x!': toAppend = '!'; break;
       case 'π': 
         if (_shouldPrependMultiplication()) expression += '×';
@@ -254,6 +299,61 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     return missing > 0 ? missing : 0;
   }
 
+  /// y√(내용) → (내용)^(1/y) 변환. y는 √( 직전의 숫자 또는 괄호 그룹.
+  String _convertNRoot(String expr) {
+    StringBuffer result = StringBuffer();
+    int i = 0;
+    while (i < expr.length) {
+      if (expr.startsWith('√(', i) && result.isNotEmpty) {
+        String prefix = result.toString();
+        String lastChar = prefix[prefix.length - 1];
+        String? y;
+        int? cutIdx;
+
+        if (lastChar == ')') {
+          int depth = 1;
+          int j = prefix.length - 2;
+          while (j >= 0 && depth > 0) {
+            if (prefix[j] == ')') depth++;
+            if (prefix[j] == '(') depth--;
+            if (depth > 0) j--;
+          }
+          if (j >= 0) {
+            y = prefix.substring(j);
+            cutIdx = j;
+          }
+        } else if (RegExp(r'[0-9.]').hasMatch(lastChar)) {
+          int j = prefix.length - 1;
+          while (j >= 0 && RegExp(r'[0-9.]').hasMatch(prefix[j])) {
+            j--;
+          }
+          y = prefix.substring(j + 1);
+          cutIdx = j + 1;
+        }
+
+        if (y != null && y.isNotEmpty && cutIdx != null) {
+          result.clear();
+          result.write(prefix.substring(0, cutIdx));
+          i += 2;
+          int depth = 1;
+          int start = i;
+          while (i < expr.length && depth > 0) {
+            if (expr[i] == '(') depth++;
+            if (expr[i] == ')') depth--;
+            if (depth > 0) i++;
+          }
+          String inner = _convertNRoot(expr.substring(start, i));
+          result.write('($inner)^(1/$y)');
+          if (i < expr.length) i++;
+          continue;
+        }
+      }
+      result.write(expr[i]);
+      i++;
+    }
+    return result.toString();
+  }
+
   /// ³√(내용) → (내용)^(1/3) 변환
   String _convertCubeRoot(String expr) {
     const prefix = '³√(';
@@ -290,12 +390,13 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           .replaceAll('e', '2.718281828459045')
           ;
       finalExpression = _convertCubeRoot(finalExpression);
+      finalExpression = _convertNRoot(finalExpression);
       finalExpression = finalExpression
           .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
           .replaceAll('³', '^3')
           .replaceAll('ln(', 'log(');
-      
+
       // Degree/Radian conversion
       if (!_isRad) {
         // This is tricky with string replacement. 
@@ -428,6 +529,43 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
 
     for (int i = 0; i < expr.length; i++) {
       String ch = expr[i];
+
+      // √ 를 만나면 직전의 y(숫자 또는 괄호 그룹)를 위첨자로 분리
+      if (!inSuper && ch == '√') {
+        String bufStr = buf.toString();
+        int splitIdx = bufStr.length;
+        if (bufStr.isNotEmpty) {
+          String lastCh = bufStr[bufStr.length - 1];
+          if (lastCh == ')') {
+            int depth = 1;
+            int j = bufStr.length - 2;
+            while (j >= 0 && depth > 0) {
+              if (bufStr[j] == ')') depth++;
+              if (bufStr[j] == '(') depth--;
+              if (depth > 0) j--;
+            }
+            if (j >= 0) splitIdx = j;
+          } else if (RegExp(r'[0-9.]').hasMatch(lastCh)) {
+            while (splitIdx > 0 && RegExp(r'[0-9.]').hasMatch(bufStr[splitIdx - 1])) {
+              splitIdx--;
+            }
+          }
+        }
+        if (splitIdx < bufStr.length) {
+          String normal = bufStr.substring(0, splitIdx);
+          String superPart = bufStr.substring(splitIdx);
+          buf.clear();
+          if (normal.isNotEmpty) {
+            result.add(_ExprSegment(normal, false, false));
+          }
+          if (superPart.startsWith('(') && superPart.endsWith(')')) {
+            superPart = superPart.substring(1, superPart.length - 1);
+          }
+          result.add(_ExprSegment(superPart, true, false));
+        }
+        buf.write(ch);
+        continue;
+      }
 
       // ^ 를 만나면 일반 텍스트 flush 후 위첨자 모드 진입
       if (!inSuper && ch == '^') {
