@@ -112,7 +112,11 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     double currentVal = 0;
     try {
       // 현재 수식 전체의 계산 결과를 가져옴
-      String finalExpression = _convertHyperbolic(_convertScientificNotation(expression))
+      String preprocessed = _convertHyperbolic(_convertScientificNotation(expression));
+      if (!_isRad) {
+        preprocessed = _convertDegrees(preprocessed);
+      }
+      String finalExpression = preprocessed
           .replaceAll('×', '*')
           .replaceAll('÷', '/')
           .replaceAll('π', '3.141592653589793')
@@ -401,6 +405,45 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     return result.toString();
   }
 
+  /// Deg 모드일 때 sin/cos/tan 인자를 도→라디안으로 변환.
+  /// sin(x) → sin((x)*π/180). sinh 등 다른 이름 함수는 건드리지 않음.
+  String _convertDegrees(String expr) {
+    const funcs = ['sin(', 'cos(', 'tan('];
+    StringBuffer result = StringBuffer();
+    int i = 0;
+    while (i < expr.length) {
+      String? matched;
+      for (String f in funcs) {
+        if (expr.startsWith(f, i)) {
+          matched = f;
+          break;
+        }
+      }
+      bool precededByLetter = i > 0 && RegExp(r'[a-zA-Z]').hasMatch(expr[i - 1]);
+      if (matched != null && !precededByLetter) {
+        String name = matched.substring(0, matched.length - 1);
+        i += matched.length;
+        int depth = 1;
+        int start = i;
+        while (i < expr.length && depth > 0) {
+          if (expr[i] == '(') {
+            depth++;
+          } else if (expr[i] == ')') {
+            depth--;
+          }
+          if (depth > 0) i++;
+        }
+        String inner = _convertDegrees(expr.substring(start, i));
+        result.write('$name(($inner)*π/180)');
+        if (i < expr.length) i++;
+      } else {
+        result.write(expr[i]);
+        i++;
+      }
+    }
+    return result.toString();
+  }
+
   /// 과학 표기(3e5 → (3*10^(5))) 변환. 숫자 바로 뒤의 e를 지수 표기로 해석.
   /// 뒤에 지수가 없는 dangling e(예: "3e")는 미완성으로 간주해 예외 발생.
   String _convertScientificNotation(String expr) {
@@ -497,7 +540,11 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
 
     if (!prepareEquals()) return;
     try {
-      String finalExpression = _convertHyperbolic(_convertScientificNotation(expression))
+      String preprocessed = _convertHyperbolic(_convertScientificNotation(expression));
+      if (!_isRad) {
+        preprocessed = _convertDegrees(preprocessed);
+      }
+      String finalExpression = preprocessed
           .replaceAll('×', '*')
           .replaceAll('÷', '/')
           .replaceAll('π', '3.141592653589793')
@@ -510,13 +557,6 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
           .replaceAll('³', '^3');
-
-      // Degree/Radian conversion
-      if (!_isRad) {
-        // This is tricky with string replacement.
-        // A better way would be to custom parse or adjust the input.
-        // For now, let's assume Radian as default or notify it's in progress.
-      }
 
       GrammarParser p = GrammarParser();
       Expression exp = p.parse(finalExpression);
