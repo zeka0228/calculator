@@ -112,7 +112,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     double currentVal = 0;
     try {
       // 현재 수식 전체의 계산 결과를 가져옴
-      String finalExpression = expression
+      String finalExpression = _convertHyperbolic(expression)
           .replaceAll('×', '*')
           .replaceAll('÷', '/')
           .replaceAll('π', '3.141592653589793')
@@ -186,15 +186,50 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     }
 
     String toAppend = '';
-    bool isPrefixFunc = false; // sin(, log( 처럼 앞에 붙는 함수인지 여부
 
     switch (func) {
-      case 'sin': toAppend = 'sin('; isPrefixFunc = true; break;
-      case 'cos': toAppend = 'cos('; isPrefixFunc = true; break;
-      case 'tan': toAppend = 'tan('; isPrefixFunc = true; break;
-      case 'sinh': toAppend = 'sinh('; isPrefixFunc = true; break;
-      case 'cosh': toAppend = 'cosh('; isPrefixFunc = true; break;
-      case 'tanh': toAppend = 'tanh('; isPrefixFunc = true; break;
+      case 'sin':
+        if (expression != '0') {
+          expression = 'sin($expression)';
+        } else {
+          expression = 'sin(';
+        }
+        return;
+      case 'cos':
+        if (expression != '0') {
+          expression = 'cos($expression)';
+        } else {
+          expression = 'cos(';
+        }
+        return;
+      case 'tan':
+        if (expression != '0') {
+          expression = 'tan($expression)';
+        } else {
+          expression = 'tan(';
+        }
+        return;
+      case 'sinh':
+        if (expression != '0') {
+          expression = 'sinh($expression)';
+        } else {
+          expression = 'sinh(';
+        }
+        return;
+      case 'cosh':
+        if (expression != '0') {
+          expression = 'cosh($expression)';
+        } else {
+          expression = 'cosh(';
+        }
+        return;
+      case 'tanh':
+        if (expression != '0') {
+          expression = 'tanh($expression)';
+        } else {
+          expression = 'tanh(';
+        }
+        return;
       case 'ln':
         if (expression != '0') {
           expression = 'ln($expression)';
@@ -293,11 +328,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       default: return;
     }
 
-    if (isPrefixFunc && _shouldPrependMultiplication()) {
-      expression += '×';
-    }
-
-    if (expression == '0' && (isPrefixFunc || toAppend == 'π' || toAppend == 'e')) {
+    if (expression == '0' && (toAppend == 'π' || toAppend == 'e')) {
       expression = toAppend;
     } else {
       expression += toAppend;
@@ -366,6 +397,54 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     return result.toString();
   }
 
+  /// sinh/cosh/tanh(x)를 e^x 기반 정체성으로 변환.
+  /// e 치환 이전에 호출해야 함 (출력이 'e^' 문법을 사용).
+  String _convertHyperbolic(String expr) {
+    const funcs = ['sinh(', 'cosh(', 'tanh('];
+    StringBuffer result = StringBuffer();
+    int i = 0;
+    while (i < expr.length) {
+      String? matched;
+      for (String f in funcs) {
+        if (expr.startsWith(f, i)) {
+          matched = f;
+          break;
+        }
+      }
+      if (matched != null) {
+        String name = matched.substring(0, matched.length - 1);
+        i += matched.length;
+        int depth = 1;
+        int start = i;
+        while (i < expr.length && depth > 0) {
+          if (expr[i] == '(') {
+            depth++;
+          } else if (expr[i] == ')') {
+            depth--;
+          }
+          if (depth > 0) i++;
+        }
+        String inner = _convertHyperbolic(expr.substring(start, i));
+        switch (name) {
+          case 'sinh':
+            result.write('((e^($inner)-e^(-($inner)))/2)');
+            break;
+          case 'cosh':
+            result.write('((e^($inner)+e^(-($inner)))/2)');
+            break;
+          case 'tanh':
+            result.write('((e^($inner)-e^(-($inner)))/(e^($inner)+e^(-($inner))))');
+            break;
+        }
+        if (i < expr.length) i++;
+      } else {
+        result.write(expr[i]);
+        i++;
+      }
+    }
+    return result.toString();
+  }
+
   /// ³√(내용) → (내용)^(1/3) 변환
   String _convertCubeRoot(String expr) {
     const prefix = '³√(';
@@ -394,9 +473,14 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
   }
 
   void _calculateWithScientific() {
+    String savedExpression = expression;
+    bool savedIsResultDisplayed = isResultDisplayed;
+    String? savedLastOp = lastOp;
+    String? savedLastOperandStr = lastOperandStr;
+
     if (!prepareEquals()) return;
     try {
-      String finalExpression = expression
+      String finalExpression = _convertHyperbolic(expression)
           .replaceAll('×', '*')
           .replaceAll('÷', '/')
           .replaceAll('π', '3.141592653589793')
@@ -412,7 +496,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
 
       // Degree/Radian conversion
       if (!_isRad) {
-        // This is tricky with string replacement. 
+        // This is tricky with string replacement.
         // A better way would be to custom parse or adjust the input.
         // For now, let's assume Radian as default or notify it's in progress.
       }
@@ -428,11 +512,16 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     } catch (e) {
       String errMsg = e.toString().toLowerCase();
       if (errMsg.contains('infinity') || errMsg.contains('overflow')) {
+        history = expression;
         expression = '오버플로';
+        isResultDisplayed = true;
       } else {
-        expression = 'Error';
+        // 파싱/문법 오류 — 상태 복원 후 아무 동작도 하지 않음
+        expression = savedExpression;
+        isResultDisplayed = savedIsResultDisplayed;
+        lastOp = savedLastOp;
+        lastOperandStr = savedLastOperandStr;
       }
-      isResultDisplayed = true;
     }
   }
 

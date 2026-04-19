@@ -93,8 +93,20 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
   }
 
   void handleEquals() {
+    String savedExpression = expression;
+    bool savedIsResultDisplayed = isResultDisplayed;
+    String? savedLastOp = lastOp;
+    String? savedLastOperandStr = lastOperandStr;
+
     if (!prepareEquals()) return;
     calculateAdvanced();
+
+    if (expression == 'Error') {
+      expression = savedExpression;
+      isResultDisplayed = savedIsResultDisplayed;
+      lastOp = savedLastOp;
+      lastOperandStr = savedLastOperandStr;
+    }
   }
 
   void clearAll() {
