@@ -12,6 +12,16 @@ class BasicCalculatorScreen extends StatefulWidget {
 class _BasicCalculatorScreenState extends State<BasicCalculatorScreen> with CalculatorBase {
   void _onButtonPressed(String text) {
     setState(() {
+      const errorStates = {'정의되지 않음', '오버플로', 'Error'};
+      if (isResultDisplayed && errorStates.contains(expression)) {
+        if (text == 'AC' || text == 'C' || text == '⌫') {
+          clearAll();
+          return;
+        }
+        bool isStartFresh = RegExp(r'^[0-9]$').hasMatch(text) || text == '.';
+        if (!isStartFresh) return;
+      }
+
       if (RegExp(r'^[0-9]$').hasMatch(text)) {
         handleNumber(text);
       } else if (text == '.') {

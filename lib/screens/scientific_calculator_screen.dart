@@ -26,6 +26,17 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
 
   void _onButtonPressed(String text) {
     setState(() {
+      const errorStates = {'정의되지 않음', '오버플로', 'Error'};
+      if (isResultDisplayed && errorStates.contains(expression)) {
+        if (text == 'AC' || text == 'C' || text == '⌫') {
+          clearAll();
+          return;
+        }
+        bool isStartFresh = RegExp(r'^[0-9]$').hasMatch(text) || text == '.';
+        if (!isStartFresh) return;
+        // 숫자·점 입력은 handleNumber/handleDot이 isResultDisplayed 보고 새로 시작
+      }
+
       if (_awaitingPending) {
         // logᵧ 펜딩 중 또 logᵧ를 누르면 바깥 log로 감싸되 펜딩은 안쪽(기존 대상)에 유지
         if (_pendingSubscript && text == 'logᵧ' &&
