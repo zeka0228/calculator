@@ -121,6 +121,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       finalExpression = _convertCubeRoot(finalExpression);
       finalExpression = _convertNRoot(finalExpression);
       finalExpression = finalExpression
+          .replaceAll('log₁₀(', 'log(10,')
           .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
           .replaceAll('³', '^3');
@@ -201,7 +202,13 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
           expression = 'ln(';
         }
         return;
-      case 'log₁₀': toAppend = 'log(10,'; isPrefixFunc = true; break;
+      case 'log₁₀':
+        if (expression != '0') {
+          expression = 'log₁₀($expression)';
+        } else {
+          expression = 'log₁₀(';
+        }
+        return;
       case 'x²': 
         if (expression != '0') {
           expression = '($expression)²';
@@ -397,6 +404,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       finalExpression = _convertCubeRoot(finalExpression);
       finalExpression = _convertNRoot(finalExpression);
       finalExpression = finalExpression
+          .replaceAll('log₁₀(', 'log(10,')
           .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
           .replaceAll('³', '^3');
