@@ -123,8 +123,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       finalExpression = finalExpression
           .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
-          .replaceAll('³', '^3')
-          .replaceAll('ln(', 'log(');
+          .replaceAll('³', '^3');
 
       GrammarParser p = GrammarParser();
       Expression exp = p.parse(finalExpression);
@@ -195,7 +194,13 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       case 'sinh': toAppend = 'sinh('; isPrefixFunc = true; break;
       case 'cosh': toAppend = 'cosh('; isPrefixFunc = true; break;
       case 'tanh': toAppend = 'tanh('; isPrefixFunc = true; break;
-      case 'ln': toAppend = 'ln('; isPrefixFunc = true; break;
+      case 'ln':
+        if (expression != '0') {
+          expression = 'ln($expression)';
+        } else {
+          expression = 'ln(';
+        }
+        return;
       case 'log₁₀': toAppend = 'log(10,'; isPrefixFunc = true; break;
       case 'x²': 
         if (expression != '0') {
@@ -394,8 +399,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       finalExpression = finalExpression
           .replaceAll('√(', 'sqrt(')
           .replaceAll('²', '^2')
-          .replaceAll('³', '^3')
-          .replaceAll('ln(', 'log(');
+          .replaceAll('³', '^3');
 
       // Degree/Radian conversion
       if (!_isRad) {
