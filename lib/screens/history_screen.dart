@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import '../data/calc_history_repository.dart';
 
 class HistoryScreen extends StatefulWidget {
-  const HistoryScreen({super.key});
+  final ScrollController? scrollController;
+  final DraggableScrollableController? sheetController;
+  const HistoryScreen({
+    super.key,
+    this.scrollController,
+    this.sheetController,
+  });
 
   @override
   State<HistoryScreen> createState() => _HistoryScreenState();
@@ -54,27 +60,73 @@ class _HistoryScreenState extends State<HistoryScreen> {
     }
   }
 
+  void _onHandleDrag(DragUpdateDetails details) {
+    final ctrl = widget.sheetController;
+    if (ctrl == null || !ctrl.isAttached) return;
+    final screenHeight = MediaQuery.of(context).size.height;
+    final newSize = ctrl.size - details.delta.dy / screenHeight;
+    ctrl.jumpTo(newSize.clamp(0.4, 1.0));
+  }
+
+  void _onHandleDragEnd(DragEndDetails details) {
+    final ctrl = widget.sheetController;
+    if (ctrl == null || !ctrl.isAttached) return;
+    final velocity = details.velocity.pixelsPerSecond.dy;
+    final size = ctrl.size;
+    double target;
+    if (velocity < -500) {
+      target = 1.0;
+    } else if (velocity > 500) {
+      target = size > 0.7 ? 0.7 : 0.4;
+    } else {
+      target = size > 0.85 ? 1.0 : (size > 0.55 ? 0.7 : 0.4);
+    }
+    ctrl.animateTo(
+      target,
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeOut,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(24, 8, 16, 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onVerticalDragUpdate: _onHandleDrag,
+          onVerticalDragEnd: _onHandleDragEnd,
+          child: Column(
             children: [
-              const Text(
-                '기록 (지난 7일)',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.w500,
+              Container(
+                margin: const EdgeInsets.only(top: 8, bottom: 4),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[700],
+                  borderRadius: BorderRadius.circular(2),
                 ),
               ),
-              TextButton(
-                onPressed: _confirmClearAll,
-                child: const Text('전체 삭제',
-                    style: TextStyle(color: Colors.orange)),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 16, 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '기록 (지난 7일)',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 22,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                    TextButton(
+                      onPressed: _confirmClearAll,
+                      child: const Text('전체 삭제',
+                          style: TextStyle(color: Colors.orange)),
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
@@ -107,6 +159,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 );
               }
               return ListView.separated(
+                controller: widget.scrollController,
                 padding: const EdgeInsets.symmetric(horizontal: 24),
                 itemCount: items.length,
                 separatorBuilder: (_, i) =>
@@ -116,10 +169,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                   return Padding(
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         SingleChildScrollView(
-                          reverse: true,
                           scrollDirection: Axis.horizontal,
                           child: Text(
                             e.expression,
@@ -132,7 +184,6 @@ class _HistoryScreenState extends State<HistoryScreen> {
                         ),
                         const SizedBox(height: 4),
                         SingleChildScrollView(
-                          reverse: true,
                           scrollDirection: Axis.horizontal,
                           child: Text(
                             e.result,
