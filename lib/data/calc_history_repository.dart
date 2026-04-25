@@ -79,4 +79,20 @@ class CalcHistoryRepository {
     debugPrint('[history] deleteAll → $n row(s)');
     return n;
   }
+
+  Future<int> deleteByIds(List<int> ids) async {
+    if (ids.isEmpty) {
+      debugPrint('[history] deleteByIds: empty list, skipped');
+      return 0;
+    }
+    final db = await DatabaseHelper.instance.database;
+    final placeholders = List.filled(ids.length, '?').join(',');
+    final n = await db.delete(
+      'history',
+      where: 'id IN ($placeholders)',
+      whereArgs: ids,
+    );
+    debugPrint('[history] deleteByIds=$ids → $n row(s)');
+    return n;
+  }
 }

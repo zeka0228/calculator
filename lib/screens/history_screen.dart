@@ -16,11 +16,60 @@ class HistoryScreen extends StatefulWidget {
 
 class _HistoryScreenState extends State<HistoryScreen> {
   late Future<List<CalcHistoryEntry>> _future;
+  bool _editMode = false;
+  final Set<int> _selected = {};
 
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  void _enterEditMode() {
+    setState(() {
+      _editMode = true;
+      _selected.clear();
+    });
+    debugPrint('[history] edit mode: ON');
+  }
+
+  void _cancelEditMode() {
+    setState(() {
+      _editMode = false;
+      _selected.clear();
+    });
+    debugPrint('[history] edit mode: OFF (cancel)');
+  }
+
+  Future<void> _commitDelete() async {
+    if (_selected.isEmpty) {
+      _cancelEditMode();
+      return;
+    }
+    final ids = _selected.toList();
+    debugPrint('[history] deleting selected ids=$ids');
+    try {
+      await CalcHistoryRepository.instance.deleteByIds(ids);
+    } catch (e, st) {
+      debugPrint('[history] delete by ids FAILED: $e\n$st');
+    }
+    if (!mounted) return;
+    setState(() {
+      _editMode = false;
+      _selected.clear();
+      _load();
+    });
+  }
+
+  void _toggleSelect(int id) {
+    setState(() {
+      if (_selected.contains(id)) {
+        _selected.remove(id);
+      } else {
+        _selected.add(id);
+      }
+    });
+    debugPrint('[history] selection=$_selected');
   }
 
   void _load() {
@@ -108,24 +157,48 @@ class _HistoryScreenState extends State<HistoryScreen> {
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.fromLTRB(24, 8, 16, 12),
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text(
-                      '기록 (지난 7일)',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.w500,
+                    TextButton(
+                      onPressed:
+                          _editMode ? _commitDelete : _enterEditMode,
+                      child: Text(
+                        _editMode
+                            ? '삭제${_selected.isEmpty ? '' : ' (${_selected.length})'}'
+                            : '편집',
+                        style: TextStyle(
+                          color:
+                              _editMode ? Colors.redAccent : Colors.orange,
+                          fontSize: 16,
+                          fontWeight: FontWeight.w500,
+                        ),
                       ),
                     ),
                     TextButton(
-                      onPressed: _confirmClearAll,
-                      child: const Text('전체 삭제',
-                          style: TextStyle(color: Colors.orange)),
+                      onPressed:
+                          _editMode ? _cancelEditMode : _confirmClearAll,
+                      child: Text(
+                        _editMode ? '취소' : '전체 삭제',
+                        style: const TextStyle(color: Colors.orange),
+                      ),
                     ),
                   ],
+                ),
+              ),
+              const Padding(
+                padding: EdgeInsets.fromLTRB(24, 4, 24, 12),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    '기록 (지난 7일)',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 22,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
               ),
             ],
@@ -166,35 +239,81 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     Divider(color: Colors.grey[850], height: 1),
                 itemBuilder: (_, i) {
                   final e = items[i];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Text(
-                            e.expression,
-                            style: const TextStyle(
-                              color: Colors.grey,
-                              fontSize: 16,
-                              fontWeight: FontWeight.w300,
-                            ),
+                  final id = e.id;
+                  final isSelected = id != null && _selected.contains(id);
+                  final entry = Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Text(
+                          e.expression,
+                          style: const TextStyle(
+                            color: Colors.grey,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w300,
                           ),
                         ),
-                        const SizedBox(height: 4),
-                        SingleChildScrollView(
-                          scrollDirection: Axis.horizontal,
-                          child: Text(
-                            e.result,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 32,
-                              fontWeight: FontWeight.w400,
-                            ),
+                      ),
+                      const SizedBox(height: 4),
+                      SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Text(
+                          e.result,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 32,
+                            fontWeight: FontWeight.w400,
                           ),
                         ),
-                      ],
+                      ),
+                    ],
+                  );
+                  return GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: _editMode && id != null
+                        ? () => _toggleSelect(id)
+                        : null,
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          AnimatedContainer(
+                            duration: const Duration(milliseconds: 180),
+                            curve: Curves.easeOut,
+                            width: _editMode ? 36 : 0,
+                            child: _editMode
+                                ? Center(
+                                    child: Container(
+                                      width: 24,
+                                      height: 24,
+                                      decoration: BoxDecoration(
+                                        shape: BoxShape.circle,
+                                        border: Border.all(
+                                          color: isSelected
+                                              ? Colors.orange
+                                              : Colors.grey,
+                                          width: 2,
+                                        ),
+                                        color: isSelected
+                                            ? Colors.orange
+                                            : Colors.transparent,
+                                      ),
+                                      child: isSelected
+                                          ? const Icon(
+                                              Icons.check,
+                                              size: 16,
+                                              color: Colors.white,
+                                            )
+                                          : null,
+                                    ),
+                                  )
+                                : null,
+                          ),
+                          Expanded(child: entry),
+                        ],
+                      ),
                     ),
                   );
                 },
