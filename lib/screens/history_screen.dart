@@ -18,6 +18,7 @@ class _HistoryScreenState extends State<HistoryScreen> {
   late Future<List<CalcHistoryEntry>> _future;
   bool _editMode = false;
   final Set<int> _selected = {};
+  final GlobalKey _clearAllKey = GlobalKey();
 
   @override
   void initState() {
@@ -82,30 +83,87 @@ class _HistoryScreenState extends State<HistoryScreen> {
   }
 
   Future<void> _confirmClearAll() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.grey[900],
-        title: const Text('전체 삭제',
-            style: TextStyle(color: Colors.white)),
-        content: const Text('모든 계산 기록을 삭제할까요?',
-            style: TextStyle(color: Colors.white70)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(false),
-            child: const Text('취소', style: TextStyle(color: Colors.grey)),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(ctx).pop(true),
-            child: const Text('삭제', style: TextStyle(color: Colors.orange)),
-          ),
-        ],
+    final btnCtx = _clearAllKey.currentContext;
+    if (btnCtx == null) return;
+    final RenderBox button = btnCtx.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final RelativeRect position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(button.size.bottomLeft(Offset.zero),
+            ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero),
+            ancestor: overlay),
       ),
+      Offset.zero & overlay.size,
     );
+
+    debugPrint('[history] clearAll popover opened');
+    final confirmed = await showMenu<bool>(
+      context: context,
+      position: position,
+      color: Colors.grey[850],
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      items: [
+        PopupMenuItem<bool>(
+          enabled: false,
+          padding: EdgeInsets.zero,
+          child: SizedBox(
+            width: 240,
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '모든 계산이 삭제됩니다.\n이 동작은 취소할 수 없습니다.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: Colors.white, fontSize: 13),
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: TextButton(
+                      style: TextButton.styleFrom(
+                        backgroundColor: Colors.red,
+                        foregroundColor: Colors.white,
+                        shape: const StadiumBorder(),
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      onPressed: () => Navigator.of(context).pop(true),
+                      child: const Text(
+                        '기록 지우기',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+
     if (confirmed == true) {
-      await CalcHistoryRepository.instance.deleteAll();
+      debugPrint('[history] clearAll confirmed');
+      try {
+        await CalcHistoryRepository.instance.deleteAll();
+      } catch (e, st) {
+        debugPrint('[history] clearAll FAILED: $e\n$st');
+      }
       if (!mounted) return;
-      setState(_load);
+      setState(() {
+        _editMode = false;
+        _selected.clear();
+        _load();
+      });
+    } else {
+      debugPrint('[history] clearAll dismissed');
     }
   }
 
@@ -164,25 +222,48 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     TextButton(
                       onPressed:
                           _editMode ? _commitDelete : _enterEditMode,
-                      child: Text(
-                        _editMode
-                            ? '삭제${_selected.isEmpty ? '' : ' (${_selected.length})'}'
-                            : '편집',
-                        style: TextStyle(
-                          color:
-                              _editMode ? Colors.redAccent : Colors.orange,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
+                      child: _editMode
+                          ? Container(
+                              width: 28,
+                              height: 28,
+                              decoration: const BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: Colors.orange,
+                              ),
+                              child: const Icon(
+                                Icons.check,
+                                color: Colors.white,
+                                size: 18,
+                              ),
+                            )
+                          : const Text(
+                              '편집',
+                              style: TextStyle(
+                                color: Colors.orange,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
                     ),
                     TextButton(
-                      onPressed:
-                          _editMode ? _cancelEditMode : _confirmClearAll,
-                      child: Text(
-                        _editMode ? '취소' : '전체 삭제',
-                        style: const TextStyle(color: Colors.orange),
-                      ),
+                      key: _clearAllKey,
+                      onPressed: _editMode
+                          ? _confirmClearAll
+                          : () => Navigator.of(context).pop(),
+                      child: _editMode
+                          ? const Text(
+                              '모두 지우기',
+                              style: TextStyle(
+                                color: Colors.red,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            )
+                          : const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 24,
+                            ),
                     ),
                   ],
                 ),
