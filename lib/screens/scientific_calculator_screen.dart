@@ -841,6 +841,7 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       history = expression;
       expression = formatValue(eval);
       isResultDisplayed = true;
+      saveCurrentToHistory();
     } catch (e) {
       String errMsg = e.toString().toLowerCase();
       if (errMsg.contains('infinity') || errMsg.contains('overflow')) {

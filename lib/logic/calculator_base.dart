@@ -110,22 +110,28 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
       return;
     }
 
-    const errorStates = {'오버플로', '정의되지 않음'};
-    if (!errorStates.contains(expression) && history.isNotEmpty) {
-      final exprToSave = history;
-      final resultToSave = expression;
-      CalcHistoryRepository.instance.insert(exprToSave, resultToSave).then(
-        (id) {
-          debugPrint('[history] saved id=$id  $exprToSave = $resultToSave');
-        },
-        onError: (e, st) {
-          debugPrint('[history] save FAILED: $e\n$st');
-        },
-      );
-    } else {
+    saveCurrentToHistory();
+  }
+
+  /// 성공 결과를 history 테이블에 저장. expression이 에러 상태이거나
+  /// history가 비어있으면 스킵. 양 계산기 화면이 공통으로 호출.
+  void saveCurrentToHistory() {
+    const errorStates = {'Error', '오버플로', '정의되지 않음'};
+    if (errorStates.contains(expression) || history.isEmpty) {
       debugPrint(
           '[history] skipped (state="$expression", history="$history")');
+      return;
     }
+    final exprToSave = history;
+    final resultToSave = expression;
+    CalcHistoryRepository.instance.insert(exprToSave, resultToSave).then(
+      (id) {
+        debugPrint('[history] saved id=$id  $exprToSave = $resultToSave');
+      },
+      onError: (e, st) {
+        debugPrint('[history] save FAILED: $e\n$st');
+      },
+    );
   }
 
   void clearAll() {
