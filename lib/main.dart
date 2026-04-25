@@ -1,20 +1,15 @@
-import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
-import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'screens/basic_calculator_screen.dart';
 import 'screens/scientific_calculator_screen.dart';
 import 'screens/converter_screen.dart';
 import 'screens/math_notes_screen.dart';
 import 'screens/history_screen.dart';
+import 'data/db_init.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfi;
-  }
+  initSqflite();
   runApp(const CalculatorApp());
 }
 

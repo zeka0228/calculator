@@ -15,8 +15,13 @@ class DatabaseHelper {
   }
 
   Future<Database> _initDB(String filename) async {
-    final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filename);
+    final String path;
+    if (kIsWeb) {
+      path = filename;
+    } else {
+      final dbPath = await getDatabasesPath();
+      path = join(dbPath, filename);
+    }
     debugPrint('[db] opening: $path');
     final db = await openDatabase(
       path,
