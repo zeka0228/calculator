@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:math_expressions/math_expressions.dart';
+import '../data/calc_history_repository.dart';
 
 mixin CalculatorBase<T extends StatefulWidget> on State<T> {
   String expression = '0';
@@ -106,6 +107,24 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
       isResultDisplayed = savedIsResultDisplayed;
       lastOp = savedLastOp;
       lastOperandStr = savedLastOperandStr;
+      return;
+    }
+
+    const errorStates = {'오버플로', '정의되지 않음'};
+    if (!errorStates.contains(expression) && history.isNotEmpty) {
+      final exprToSave = history;
+      final resultToSave = expression;
+      CalcHistoryRepository.instance.insert(exprToSave, resultToSave).then(
+        (id) {
+          debugPrint('[history] saved id=$id  $exprToSave = $resultToSave');
+        },
+        onError: (e, st) {
+          debugPrint('[history] save FAILED: $e\n$st');
+        },
+      );
+    } else {
+      debugPrint(
+          '[history] skipped (state="$expression", history="$history")');
     }
   }
 

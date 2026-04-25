@@ -1,11 +1,20 @@
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'screens/basic_calculator_screen.dart';
 import 'screens/scientific_calculator_screen.dart';
 import 'screens/converter_screen.dart';
 import 'screens/math_notes_screen.dart';
+import 'screens/history_screen.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  if (!kIsWeb && (Platform.isWindows || Platform.isLinux || Platform.isMacOS)) {
+    sqfliteFfiInit();
+    databaseFactory = databaseFactoryFfi;
+  }
   runApp(const CalculatorApp());
 }
 
@@ -39,15 +48,17 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   final List<Widget> _screens = [
     const BasicCalculatorScreen(),
     const ScientificCalculatorScreen(),
+    const HistoryScreen(),
     const MathNotesScreen(),
     const ConverterScreen(),
   ];
 
-  final List<String> _labels = ['기본', '공학용', '수학 메모', '변환'];
-  
+  final List<String> _labels = ['기본', '공학용', '기록', '수학 메모', '변환'];
+
   final List<IconData> _icons = [
     CupertinoIcons.divide,
     CupertinoIcons.function,
+    CupertinoIcons.clock,
     CupertinoIcons.pencil_outline,
     CupertinoIcons.arrow_2_squarepath,
   ];
@@ -131,7 +142,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     itemBuilder: (context) {
                       List<PopupMenuEntry<int>> menuItems = [];
                       for (int i = 0; i < _labels.length; i++) {
-                        if (i == 3) {
+                        if (i == 4) {
                           menuItems.add(const PopupMenuDivider(height: 1));
                         }
                         menuItems.add(

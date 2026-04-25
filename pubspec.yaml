@@ -32,6 +32,9 @@ dependencies:
     sdk: flutter
   math_expressions: ^2.6.0
   cupertino_icons: ^1.0.8
+  sqflite: ^2.3.3+1
+  sqflite_common_ffi: ^2.3.3
+  path: ^1.9.0
 
 dev_dependencies:
   flutter_test:
