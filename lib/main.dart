@@ -1,11 +1,16 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
 import 'screens/basic_calculator_screen.dart';
 import 'screens/scientific_calculator_screen.dart';
 import 'screens/converter_screen.dart';
 import 'screens/math_notes_screen.dart';
+import 'screens/history_screen.dart';
+import 'data/db_init.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  initSqflite();
   runApp(const CalculatorApp());
 }
 
@@ -44,7 +49,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   ];
 
   final List<String> _labels = ['기본', '공학용', '수학 메모', '변환'];
-  
+
   final List<IconData> _icons = [
     CupertinoIcons.divide,
     CupertinoIcons.function,
@@ -58,6 +63,41 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     });
   }
 
+  void _openHistory() {
+    final sheetController = DraggableScrollableController();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      useSafeArea: true,
+      constraints: const BoxConstraints(maxWidth: double.infinity),
+      barrierColor: Colors.black.withValues(alpha: 0.3),
+      builder: (_) => DraggableScrollableSheet(
+        controller: sheetController,
+        initialChildSize: 0.7,
+        minChildSize: 0.4,
+        maxChildSize: 1.0,
+        expand: false,
+        builder: (ctx, scrollController) {
+          return ClipRRect(
+            borderRadius:
+                const BorderRadius.vertical(top: Radius.circular(20)),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                color: Colors.grey[900]!.withValues(alpha: 0.7),
+                child: HistoryScreen(
+                  scrollController: scrollController,
+                  sheetController: sheetController,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -67,19 +107,46 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           flexibleSpace: SafeArea(
-            child: Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.only(right: 16.0, top: 10.0),
-                child: Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    color: Colors.grey[900],
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.grey[700]!, width: 2),
+            child: Stack(
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Padding(
+                    padding: const EdgeInsets.only(left: 16.0, top: 10.0),
+                    child: Material(
+                      color: Colors.grey[900],
+                      shape: CircleBorder(
+                        side: BorderSide(color: Colors.grey[700]!, width: 2),
+                      ),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: _openHistory,
+                        child: const SizedBox(
+                          width: 80,
+                          height: 80,
+                          child: Icon(
+                            CupertinoIcons.clock,
+                            color: Colors.white,
+                            size: 36,
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
-                  child: PopupMenuButton<int>(
+                ),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: Padding(
+                    padding: const EdgeInsets.only(right: 16.0, top: 10.0),
+                    child: Container(
+                      width: 80,
+                      height: 80,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[900],
+                        shape: BoxShape.circle,
+                        border: Border.all(color: Colors.grey[700]!, width: 2),
+                      ),
+                      child: PopupMenuButton<int>(
                     padding: EdgeInsets.zero,
                     offset: const Offset(0, 85),
                     shape: RoundedRectangleBorder(
@@ -131,7 +198,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                     itemBuilder: (context) {
                       List<PopupMenuEntry<int>> menuItems = [];
                       for (int i = 0; i < _labels.length; i++) {
-                        if (i == 3) {
+                        if (i == 4) {
                           menuItems.add(const PopupMenuDivider(height: 1));
                         }
                         menuItems.add(
@@ -162,6 +229,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                   ),
                 ),
               ),
+            ),
+              ],
             ),
           ),
         ),
