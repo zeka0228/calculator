@@ -86,8 +86,14 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       }
 
       if (RegExp(r'^[0-9]$').hasMatch(text)) {
+        if (!isResultDisplayed && _shouldPrependMultiplication()) {
+          expression += '×';
+        }
         handleNumber(text);
       } else if (text == '.') {
+        if (!isResultDisplayed && _shouldPrependMultiplication()) {
+          expression += '×';
+        }
         handleDot();
       } else if (text == 'AC') {
         clearAll();
@@ -808,6 +814,12 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
     String? savedLastOperandStr = lastOperandStr;
 
     if (!prepareEquals()) return;
+
+    int missing = _getMissingParenthesesCount();
+    if (missing > 0) {
+      expression += ')' * missing;
+    }
+
     try {
       String preprocessed = _convertScientificNotation(expression);
       preprocessed = _convertInverseHyperbolic(preprocessed);
