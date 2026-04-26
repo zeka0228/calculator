@@ -1,10 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'data/calc_history_repository.dart';
+import 'data/converter_controller.dart';
+import 'data/converter_data.dart';
+import 'logic/calculator_base.dart';
 import 'screens/basic_calculator_screen.dart';
 import 'screens/scientific_calculator_screen.dart';
-import 'screens/converter_screen.dart';
 import 'screens/math_notes_screen.dart';
 import 'screens/history_screen.dart';
 import 'data/db_init.dart';
@@ -41,8 +45,12 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
+  int _lastCalcIndex = 0;
   late final MathNotesController _mathNotesController;
-  late final List<Widget> _screens;
+  late final ConverterController _converterController;
+  late final Widget _mathNotesScreen;
+  final GlobalKey _basicKey = GlobalKey();
+  final GlobalKey _scientificKey = GlobalKey();
   final GlobalKey _overflowKey = GlobalKey();
 
   static const int _mathNotesIndex = 2;
@@ -61,27 +69,117 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
     _mathNotesController = MathNotesController();
+    _converterController = ConverterController();
     unawaited(_mathNotesController.seedDummyDataIfMissing());
-    _screens = [
-      const BasicCalculatorScreen(),
-      const ScientificCalculatorScreen(),
-      MathNotesScreen(
-        controller: _mathNotesController,
-        onSwitchMode: _onItemTapped,
-      ),
-      const ConverterScreen(),
-    ];
+    _mathNotesScreen = MathNotesScreen(
+      controller: _mathNotesController,
+      onSwitchMode: _onItemTapped,
+    );
   }
 
   @override
   void dispose() {
     _mathNotesController.dispose();
+    _converterController.dispose();
     super.dispose();
+  }
+
+  Widget _buildCurrentScreen() {
+    switch (_selectedIndex) {
+      case 0:
+        return BasicCalculatorScreen(key: _basicKey);
+      case 1:
+        return ScientificCalculatorScreen(key: _scientificKey);
+      case _mathNotesIndex:
+        return _mathNotesScreen;
+      case _converterIndex:
+        if (_lastCalcIndex == 1) {
+          return ScientificCalculatorScreen(
+            key: _scientificKey,
+            showConverter: true,
+            converterController: _converterController,
+          );
+        }
+        return BasicCalculatorScreen(
+          key: _basicKey,
+          showConverter: true,
+          converterController: _converterController,
+        );
+      default:
+        return const SizedBox.shrink();
+    }
   }
 
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
+      if (index == 0 || index == 1) {
+        _lastCalcIndex = index;
+      }
+    });
+  }
+
+  void _onHistoryEntrySelected(CalcHistoryEntry entry) {
+    Navigator.of(context).pop();
+    if (entry.mode == 'converter') {
+      String resultExpression = entry.expression.split(' ').first;
+      if (entry.metadata != null) {
+        try {
+          final m = jsonDecode(entry.metadata!) as Map<String, dynamic>;
+          final categoryName = m['category'] as String?;
+          if (categoryName != null) {
+            for (final c in ConverterCategory.values) {
+              if (c.name == categoryName) {
+                _converterController.setCategory(c);
+                break;
+              }
+            }
+          }
+          final srcIdx = m['sourceUnitIndex'];
+          final tgtIdx = m['targetUnitIndex'];
+          if (srcIdx is int) {
+            _converterController.setUnitIndex(isSource: true, index: srcIdx);
+          }
+          if (tgtIdx is int) {
+            _converterController.setUnitIndex(isSource: false, index: tgtIdx);
+          }
+          final editingSource = m['editingSource'];
+          if (editingSource is bool) {
+            _converterController.setEditingSource(editingSource);
+          }
+          final sourceValue = m['sourceValue'];
+          if (sourceValue is String && sourceValue.isNotEmpty) {
+            resultExpression = sourceValue;
+          }
+        } catch (e) {
+          debugPrint('[history] converter metadata parse failed: $e');
+        }
+      }
+      setState(() {
+        _selectedIndex = _converterIndex;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final state = _lastCalcIndex == 1
+            ? _scientificKey.currentState
+            : _basicKey.currentState;
+        if (state case CalcHistoryRestorable r) {
+          r.restoreFromHistory('', resultExpression);
+        }
+      });
+      return;
+    }
+    final isScientific = entry.mode == 'scientific';
+    setState(() {
+      _selectedIndex = isScientific ? 1 : 0;
+      _lastCalcIndex = _selectedIndex;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final state = isScientific
+          ? _scientificKey.currentState
+          : _basicKey.currentState;
+      if (state case CalcHistoryRestorable r) {
+        r.restoreFromHistory(entry.expression, entry.result);
+      }
     });
   }
 
@@ -111,6 +209,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 child: HistoryScreen(
                   scrollController: scrollController,
                   sheetController: sheetController,
+                  onSelectEntry: _onHistoryEntrySelected,
                 ),
               ),
             ),
@@ -569,7 +668,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
       body: SafeArea(
         top: false,
-        child: _screens[_selectedIndex],
+        child: _buildCurrentScreen(),
       ),
     );
   }

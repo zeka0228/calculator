@@ -4,10 +4,12 @@ import '../data/calc_history_repository.dart';
 class HistoryScreen extends StatefulWidget {
   final ScrollController? scrollController;
   final DraggableScrollableController? sheetController;
+  final void Function(CalcHistoryEntry entry)? onSelectEntry;
   const HistoryScreen({
     super.key,
     this.scrollController,
     this.sheetController,
+    this.onSelectEntry,
   });
 
   @override
@@ -354,7 +356,9 @@ class _HistoryScreenState extends State<HistoryScreen> {
                     behavior: HitTestBehavior.opaque,
                     onTap: _editMode && id != null
                         ? () => _toggleSelect(id)
-                        : null,
+                        : (widget.onSelectEntry != null
+                            ? () => widget.onSelectEntry!(e)
+                            : null),
                     child: Padding(
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       child: Row(
