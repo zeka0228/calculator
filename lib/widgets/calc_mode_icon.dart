@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+/// 모드 선택 버튼에 쓰이는 작은 "계산기" 형상 아이콘 (윤곽선 + 점 격자).
+/// 메인 헤더(80x80)와 새 메모 화면 툴바(작은 버전) 양쪽에서 재사용된다.
+/// width 기준으로 모든 내부 치수가 비례 스케일됨.
 class CalcModeIcon extends StatelessWidget {
   final double width;
   final double height;

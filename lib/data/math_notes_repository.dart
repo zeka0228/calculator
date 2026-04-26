@@ -1,6 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'database_helper.dart';
 
+/// 메모 본문 배경 패턴. DB에는 `index`로 저장되므로 순서를 바꾸면
+/// 기존 데이터가 다른 패턴으로 해석된다 — enum 항목 순서 변경 금지.
 enum LinesGridMode { none, lines, wavyLines, grid, dotGrid }
 
 class MathNote {

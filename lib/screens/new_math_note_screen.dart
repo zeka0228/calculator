@@ -157,6 +157,8 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     super.dispose();
   }
 
+  // 미리보기가 떠 있는 상태에서 사용자가 Enter를 누르면 그 줄바꿈을
+  // 미리보기 텍스트로 치환한다. (모바일은 키 이벤트로 못 잡아서 onChanged로 감지)
   void _onTextChanged() {
     final newText = _textController.text;
     final cursor = _textController.selection.baseOffset;
@@ -214,6 +216,8 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     return open > close ? ')' * (open - close) : '';
   }
 
+  // 메모에서 찾기(iOS 스타일). 검색 모드 동안에는 미리보기를 끈다 — 같은 텍스트
+  // 위에 두 종류의 오버레이(검색 하이라이트 + 미리보기)가 겹치면 헷갈리기 때문.
   void _enterFindMode() {
     setState(() {
       _findMode = true;
@@ -1177,6 +1181,10 @@ class _PatternTile extends StatelessWidget {
   }
 }
 
+/// TextField 위에 인라인 미리보기(주황색 ` = 결과`)를 그리기 위한 컨트롤러.
+/// `text` 자체는 건드리지 않고 buildTextSpan에서 시각적으로만 끼워 넣기 때문에
+/// 커서 위치·undo 히스토리·IME 조합이 영향을 받지 않는다.
+/// suggest 모드에서는 사용자가 친 `=` 직전에 닫는 괄호를 끼우고, 결과는 `=` 뒤에 붙인다.
 class _PreviewTextEditingController extends TextEditingController {
   String? _preview;
   bool _isSuggest = false;

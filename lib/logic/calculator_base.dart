@@ -2,10 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:math_expressions/math_expressions.dart';
 import '../data/calc_history_repository.dart';
 
+/// 기록 모달에서 항목을 탭했을 때 calc state를 복원하기 위한 인터페이스.
+/// main.dart에서 GlobalKey로 잡은 calc state에 안전하게 호출하기 위해
+/// 비제네릭 인터페이스로 노출한다.
 abstract interface class CalcHistoryRestorable {
   void restoreFromHistory(String historyText, String resultText);
 }
 
+/// 기본/공학용 계산기에서 공통으로 쓰는 계산 엔진 + 상태 mixin.
+/// expression(현재 입력/결과) · history(직전 수식) · isResultDisplayed 외에
+/// `=` 반복 동작을 위한 lastOp/lastOperandStr를 관리한다.
 mixin CalculatorBase<T extends StatefulWidget> on State<T>
     implements CalcHistoryRestorable {
   String expression = '0';
@@ -14,6 +20,7 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T>
   String? lastOp;
   String? lastOperandStr;
 
+  /// 이 계산기가 history에 저장될 때 붙는 mode 태그. 공학용은 'scientific'으로 override한다.
   String get historyMode => 'basic';
 
   @override
@@ -27,8 +34,9 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T>
     });
   }
 
-  /// 현재 수식에서 최상위 마지막 이항 연산자와 우항을 추출해 lastOp/lastOperandStr에 저장.
-  /// 우항이 단순 숫자가 아니면 둘 다 null.
+  /// `=` 반복 누름 동작 지원용 — "8+2 = 10" 상태에서 다시 `=`을 누르면
+  /// "10+2 = 12"가 되도록 마지막 이항 연산자와 우항(단순 숫자)을 기억해 둔다.
+  /// 우항이 식이면 의미가 모호하므로 둘 다 null로 두고 반복 모드를 끈다.
   void extractLastOp() {
     int depth = 0;
     for (int i = expression.length - 1; i >= 0; i--) {

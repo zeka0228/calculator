@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'database_helper.dart';
 
+/// 앱 전역 키-값 설정 저장소 (settings 테이블 사용).
+/// 메모 배경 모드 같이 컬럼을 따로 만들 정도가 아닌 작은 환경설정용.
 class AppSettings {
   static final AppSettings instance = AppSettings._();
   AppSettings._();

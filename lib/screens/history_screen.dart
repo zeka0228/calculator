@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import '../data/calc_history_repository.dart';
 
+/// 계산기 화면 좌측 시계 버튼으로 띄우는 기록 모달.
+/// 두 가지 동작 모드:
+///   - 일반 모드: 항목 탭 → onSelectEntry 콜백 → 해당 모드/값 복원
+///   - 편집 모드: 항목 탭 → 선택 토글, 우측 상단의 "모두 지우기"로 일괄 정리
 class HistoryScreen extends StatefulWidget {
   final ScrollController? scrollController;
   final DraggableScrollableController? sheetController;

@@ -38,6 +38,9 @@ class CurrencyRates {
   }
 }
 
+/// 환율 캐시 + frankfurter.dev API 호출을 담당하는 싱글톤.
+/// 정책: 캐시가 1시간 이상 오래됐거나 없을 때만 네트워크 요청.
+/// (api.frankfurter.app은 .dev로 영구 이동되어 직접 새 도메인을 사용)
 class CurrencyRepository extends ChangeNotifier {
   static final CurrencyRepository instance = CurrencyRepository._();
   CurrencyRepository._();

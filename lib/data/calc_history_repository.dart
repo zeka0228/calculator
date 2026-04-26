@@ -1,6 +1,9 @@
 import 'package:flutter/foundation.dart';
 import 'database_helper.dart';
 
+/// 계산 기록 한 건. 기본/공학용 계산 결과와 변환 결과를 같은 테이블에서 다룬다.
+/// - mode: 'basic' / 'scientific' / 'converter' — 탭 시 어느 모드로 복원할지 결정
+/// - metadata: 변환 항목의 카테고리·단위 인덱스·source 값을 JSON으로 보관
 class CalcHistoryEntry {
   final int? id;
   final String expression;

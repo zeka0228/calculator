@@ -2,6 +2,8 @@ import 'package:flutter/foundation.dart';
 import 'package:path/path.dart';
 import 'package:sqflite/sqflite.dart';
 
+/// 앱 전역 sqflite DB 싱글톤. 버전을 올릴 때마다 `_onUpgrade`에 누적 마이그레이션을 추가한다.
+/// 신규 설치는 `_onCreate` 한 번에 최신 스키마로 만들어진다.
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
@@ -52,6 +54,8 @@ class DatabaseHelper {
     await _createSettingsTable(db);
   }
 
+  // 기존 사용자의 DB를 단계적으로 새 스키마로 끌어올린다.
+  // 각 if 블록은 독립적으로, 낮은 버전부터 차례로 모두 적용되도록 작성한다.
   Future<void> _onUpgrade(
       Database db, int oldVersion, int newVersion) async {
     debugPrint('[db] onUpgrade $oldVersion → $newVersion');
@@ -72,6 +76,8 @@ class DatabaseHelper {
       await _createSettingsTable(db);
     }
     if (oldVersion < 5) {
+      // history는 계산기/변환기 양쪽이 같은 테이블을 쓰므로 mode로 구분.
+      // 변환 항목은 metadata에 카테고리/단위 인덱스 등이 JSON으로 들어간다.
       await db.execute(
         "ALTER TABLE history ADD COLUMN mode TEXT NOT NULL DEFAULT 'basic'",
       );

@@ -1,3 +1,4 @@
+/// 단위 변환의 카테고리. 화면 상단 모달에 노출되는 순서와 동일하다.
 enum ConverterCategory {
   angle,
   area,
@@ -34,6 +35,10 @@ const Map<ConverterCategory, String> categoryLabels = {
   ConverterCategory.weight: '무게',
 };
 
+/// 단위 변환의 공통 인터페이스. 카테고리별 베이스 단위로 일단 환산하고,
+/// 다시 베이스에서 목적 단위로 환산하는 두 단계로 모든 변환을 처리한다.
+/// 베이스: 길이=m, 면적=m², 데이터=byte, 에너지=J, 힘=N, 연료=km/L,
+///         동력=W, 기압=Pa, 속도=m/s, 기온=K, 시간=s, 질량/무게=kg, 각도=°
 abstract class UnitConverter {
   const UnitConverter();
   double toBase(double value);
@@ -49,6 +54,7 @@ class LinearConverter extends UnitConverter {
   double fromBase(double value) => value / factor;
 }
 
+// 기온은 곱셈만으론 안 되고 오프셋(+273.15 등)이 필요해 별도 클래스.
 class TemperatureConverter extends UnitConverter {
   final String code;
   const TemperatureConverter(this.code);
@@ -81,6 +87,7 @@ class TemperatureConverter extends UnitConverter {
   }
 }
 
+// 연비는 km/L과 L/100km이 역수 관계라 단순 곱셈으로 처리할 수 없다.
 class FuelConverter extends UnitConverter {
   final String code;
   const FuelConverter(this.code);

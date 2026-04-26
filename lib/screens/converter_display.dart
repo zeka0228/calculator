@@ -52,6 +52,8 @@ String _formatNumberValue(double v) {
   return s;
 }
 
+/// 현재 변환 스냅샷을 calc history 테이블에 저장.
+/// expression/result는 단위 라벨이 붙은 사람용 문자열, metadata는 복원용 JSON.
 Future<void> saveConversionToHistory({
   required String sourceText,
   required ConverterController controller,
@@ -132,6 +134,8 @@ class _CurrencyConverter extends UnitConverter {
   }
 }
 
+/// 계산기 화면의 디스플레이 영역(상단)에 끼워 넣는 변환 위젯.
+/// 자체 키패드는 없고, 호스트 계산기의 expression을 sourceText로 받아 동작한다.
 class ConverterDisplay extends StatefulWidget {
   final String sourceText;
   final ConverterController controller;
@@ -596,6 +600,8 @@ class _UnitPickerSheetState extends State<_UnitPickerSheet> {
   }
 }
 
+// Flutter 기본 ScrollBehavior는 마우스 클릭+드래그 스크롤을 막아둔다.
+// 데스크톱/웹에서도 카테고리 칩 줄을 드래그할 수 있도록 모든 입력 장치를 허용.
 class _DragAnyDeviceScrollBehavior extends MaterialScrollBehavior {
   const _DragAnyDeviceScrollBehavior();
 

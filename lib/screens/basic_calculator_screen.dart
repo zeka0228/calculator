@@ -6,6 +6,9 @@ import '../widgets/calculator_button.dart';
 import '../logic/calculator_base.dart';
 import 'converter_display.dart';
 
+/// 기본 계산기 화면.
+/// `showConverter`가 true이면 디스플레이만 ConverterDisplay로 교체되고,
+/// 키패드는 그대로 동작한다 (변환 모드 호스트 역할).
 class BasicCalculatorScreen extends StatefulWidget {
   final bool showConverter;
   final ConverterController? converterController;
@@ -50,6 +53,7 @@ class _BasicCalculatorScreenState extends State<BasicCalculatorScreen> with Calc
         handleOperator(text);
       } else if (text == '=') {
         handleEquals();
+        // 변환 모드에서 `=` 누르면 일반 계산 결과 외에 현재 변환 스냅샷도 history에 추가.
         const errorStates = {'정의되지 않음', '오버플로', 'Error'};
         final controller = widget.converterController;
         if (widget.showConverter &&

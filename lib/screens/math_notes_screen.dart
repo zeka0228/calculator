@@ -9,6 +9,10 @@ export '../data/math_notes_repository.dart' show MathNote, LinesGridMode;
 
 enum MathNotesSortOrder { dateModified, dateCreated, title }
 
+/// 수학 메모 화면의 모든 상태와 DB 동기화를 책임지는 컨트롤러.
+/// 메모리 리스트는 항상 정렬 순서를 유지하며(`_applySort`), DB write가 끝난 뒤
+/// in-memory를 갱신하고 notifyListeners로 화면 리프레시.
+/// 배경(다크/라이트) 같은 전역 설정도 같이 보관해 모든 메모 화면이 동기화된다.
 class MathNotesController extends ChangeNotifier {
   final List<MathNote> _notes = [];
   MathNotesSortOrder _sortOrder = MathNotesSortOrder.dateModified;
@@ -191,6 +195,8 @@ class MathNotesController extends ChangeNotifier {
     return true;
   }
 
+  /// 개발 편의용 더미 시딩. 같은 제목이 이미 DB에 있으면 건너뛴다(중복 방지).
+  /// 시간(시·분)은 매번 무작위라 그룹화 결과가 자연스럽게 분산됨.
   Future<void> seedDummyDataIfMissing() async {
     if (!_loaded) await load();
     final existingTitles = _notes.map((n) => n.title).toSet();
@@ -493,6 +499,9 @@ class MathNotesScreen extends StatelessWidget {
     return '이전';
   }
 
+  /// 평탄한 노트 리스트를 ListView가 그릴 row 시퀀스로 변환.
+  /// 핀 섹션이 항상 먼저 오고, 그 아래에 그룹화 모드면 날짜 그룹별 헤더+항목,
+  /// 평면 모드(또는 제목 정렬)면 그냥 항목들만 나열.
   static List<_NoteRow> _buildRows(
     List<MathNote> notes,
     bool grouped,

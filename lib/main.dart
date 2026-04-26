@@ -45,10 +45,14 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
+  // 변환 모드(_selectedIndex == 3) 진입 시 어느 계산기 키패드를 깔지 결정.
+  // 0/1을 마지막으로 누른 시점을 기록해 둠.
   int _lastCalcIndex = 0;
   late final MathNotesController _mathNotesController;
   late final ConverterController _converterController;
   late final Widget _mathNotesScreen;
+  // 계산기 화면을 변환 모드로 전환하면서도 expression 등 calc state를 보존하기 위한 키.
+  // 같은 키를 normal/converter 모드 양쪽에서 재사용하면 State가 살아남는다.
   final GlobalKey _basicKey = GlobalKey();
   final GlobalKey _scientificKey = GlobalKey();
   final GlobalKey _overflowKey = GlobalKey();
@@ -84,6 +88,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     super.dispose();
   }
 
+  // 변환 모드는 별도 화면이 아니라 마지막 사용 계산기의 디스플레이 영역만
+  // ConverterDisplay로 교체한다. 키패드는 그대로 두고 expression을 source로 활용.
   Widget _buildCurrentScreen() {
     switch (_selectedIndex) {
       case 0:
@@ -119,6 +125,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     });
   }
 
+  // 기록 모달에서 항목을 탭했을 때 호출. mode에 따라 알맞은 모드로 전환하고
+  // calc state(또는 변환 컨트롤러)를 복원한다. State는 build 이후에야 살아나므로
+  // restore 호출은 postFrameCallback으로 미룬다.
   void _onHistoryEntrySelected(CalcHistoryEntry entry) {
     Navigator.of(context).pop();
     if (entry.mode == 'converter') {

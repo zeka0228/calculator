@@ -99,6 +99,8 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       }
 
       if (RegExp(r'^[0-9]$').hasMatch(text)) {
+        // π·e·)·! 뒤에 숫자를 치면 자동으로 ×를 끼워 넣지만,
+        // 숫자→숫자(예: 9→9)는 자연 결합이므로 예외 처리.
         if (!isResultDisplayed &&
             _shouldPrependMultiplication() &&
             !RegExp(r'[0-9.]$').hasMatch(expression)) {
