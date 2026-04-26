@@ -102,6 +102,12 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   String? _activePreview;
   bool _isSuggestActive = false;
 
+  bool _findMode = false;
+  final TextEditingController _findController = TextEditingController();
+  final FocusNode _findFocusNode = FocusNode();
+  List<int> _findMatches = const [];
+  int _currentMatchIndex = 0;
+
   bool _pinned = false;
   NoteBackground _background = NoteBackground.dark;
   FormulaResultMode _formulaResult = FormulaResultMode.insert;
@@ -140,6 +146,8 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     _textController.dispose();
     _undoController.dispose();
     _focusNode.dispose();
+    _findController.dispose();
+    _findFocusNode.dispose();
     super.dispose();
   }
 
@@ -161,7 +169,7 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   }
 
   void _updatePreview() {
-    if (_formulaResult == FormulaResultMode.off) {
+    if (_formulaResult == FormulaResultMode.off || _findMode) {
       _activePreview = null;
       _isSuggestActive = false;
       _textController.setPreview(null);
@@ -198,6 +206,92 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     final open = '('.allMatches(line).length;
     final close = ')'.allMatches(line).length;
     return open > close ? ')' * (open - close) : '';
+  }
+
+  void _enterFindMode() {
+    setState(() {
+      _findMode = true;
+      _findMatches = const [];
+      _currentMatchIndex = 0;
+    });
+    _activePreview = null;
+    _isSuggestActive = false;
+    _textController.setPreview(null);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _findFocusNode.requestFocus();
+    });
+    debugPrint('[math-notes] find mode ON');
+  }
+
+  void _exitFindMode() {
+    setState(() {
+      _findMode = false;
+      _findMatches = const [];
+      _currentMatchIndex = 0;
+      _findController.clear();
+    });
+    _textController.setHighlights(null, null);
+    _focusNode.requestFocus();
+    _updatePreview();
+    debugPrint('[math-notes] find mode OFF');
+  }
+
+  void _onFindQueryChanged(String query) {
+    if (query.isEmpty) {
+      setState(() {
+        _findMatches = const [];
+        _currentMatchIndex = 0;
+      });
+      _textController.setHighlights(null, null);
+      return;
+    }
+    final text = _textController.text;
+    final matches = <int>[];
+    int idx = 0;
+    while (idx < text.length) {
+      final found = text.indexOf(query, idx);
+      if (found == -1) break;
+      matches.add(found);
+      idx = found + query.length;
+    }
+    setState(() {
+      _findMatches = matches;
+      _currentMatchIndex = 0;
+    });
+    final current = matches.isEmpty ? null : matches.first;
+    _textController.setHighlights(query, current);
+    if (current != null) _focusOnMatch(current, query.length);
+  }
+
+  void _focusOnMatch(int start, int len) {
+    _textController.selection = TextSelection(
+      baseOffset: start,
+      extentOffset: start + len,
+    );
+  }
+
+  void _nextMatch() {
+    if (_findMatches.isEmpty) return;
+    setState(() {
+      _currentMatchIndex =
+          (_currentMatchIndex + 1) % _findMatches.length;
+    });
+    final start = _findMatches[_currentMatchIndex];
+    _textController.setHighlights(_findController.text, start);
+    _focusOnMatch(start, _findController.text.length);
+  }
+
+  void _prevMatch() {
+    if (_findMatches.isEmpty) return;
+    setState(() {
+      _currentMatchIndex =
+          (_currentMatchIndex - 1 + _findMatches.length) %
+              _findMatches.length;
+    });
+    final start = _findMatches[_currentMatchIndex];
+    _textController.setHighlights(_findController.text, start);
+    _focusOnMatch(start, _findController.text.length);
   }
 
   ({int eqPos, String closing}) _suggestSlot(
@@ -381,6 +475,7 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
         setState(() => _pinned = !_pinned);
         break;
       case 'find_in_note':
+        _enterFindMode();
         break;
       case 'recent':
         await _showRecentNotesSheet();
@@ -849,9 +944,14 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
       ),
       body: SafeArea(
         top: false,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Stack(
+        child: Column(
+          children: [
+            if (_findMode) _buildFindBar(),
+            Expanded(
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                child: Stack(
             children: [
               if (_linesGrid != LinesGridMode.none)
                 Positioned.fill(
@@ -891,7 +991,111 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
               ),
             ],
           ),
+                ),
+              ),
+          ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFindBar() {
+    final matchCount = _findMatches.length;
+    final hasMatch = matchCount > 0;
+    final hasQuery = _findController.text.isNotEmpty;
+    final barColor = _isLight ? Colors.grey.shade200 : Colors.grey.shade900;
+    final inputColor = _isLight ? Colors.white : Colors.black;
+    return Container(
+      color: barColor,
+      padding: const EdgeInsets.fromLTRB(8, 8, 4, 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Container(
+              height: 36,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              decoration: BoxDecoration(
+                color: inputColor,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Row(
+                children: [
+                  Icon(CupertinoIcons.search, size: 18, color: _hintColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: TextField(
+                      controller: _findController,
+                      focusNode: _findFocusNode,
+                      onChanged: _onFindQueryChanged,
+                      onSubmitted: (_) => _nextMatch(),
+                      style: TextStyle(color: _fgColor, fontSize: 15),
+                      decoration: InputDecoration(
+                        isCollapsed: true,
+                        border: InputBorder.none,
+                        hintText: '검색',
+                        hintStyle:
+                            TextStyle(color: _hintColor, fontSize: 15),
+                      ),
+                    ),
+                  ),
+                  if (hasQuery)
+                    GestureDetector(
+                      onTap: () {
+                        _findController.clear();
+                        _onFindQueryChanged('');
+                        _findFocusNode.requestFocus();
+                      },
+                      child: Icon(
+                        CupertinoIcons.clear_circled_solid,
+                        size: 18,
+                        color: _hintColor,
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          if (hasQuery)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                hasMatch
+                    ? '${_currentMatchIndex + 1}/$matchCount'
+                    : '0/0',
+                style: TextStyle(color: _hintColor, fontSize: 13),
+              ),
+            ),
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints:
+                const BoxConstraints(minWidth: 32, minHeight: 32),
+            icon: Icon(
+              CupertinoIcons.chevron_up,
+              size: 18,
+              color: hasMatch ? _fgColor : _hintColor,
+            ),
+            onPressed: hasMatch ? _prevMatch : null,
+          ),
+          IconButton(
+            padding: EdgeInsets.zero,
+            constraints:
+                const BoxConstraints(minWidth: 32, minHeight: 32),
+            icon: Icon(
+              CupertinoIcons.chevron_down,
+              size: 18,
+              color: hasMatch ? _fgColor : _hintColor,
+            ),
+            onPressed: hasMatch ? _nextMatch : null,
+          ),
+          TextButton(
+            onPressed: _exitFindMode,
+            child: const Text(
+              '완료',
+              style: TextStyle(color: Colors.orange, fontSize: 16),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -961,6 +1165,8 @@ class _PatternTile extends StatelessWidget {
 class _PreviewTextEditingController extends TextEditingController {
   String? _preview;
   bool _isSuggest = false;
+  String? _findQuery;
+  int? _currentMatchStart;
 
   String? get preview => _preview;
   bool get isSuggest => _isSuggest;
@@ -971,12 +1177,22 @@ class _PreviewTextEditingController extends TextEditingController {
     _isSuggest = isSuggest;
   }
 
+  void setHighlights(String? query, int? currentMatchStart) {
+    if (_findQuery == query && _currentMatchStart == currentMatchStart) return;
+    _findQuery = query;
+    _currentMatchStart = currentMatchStart;
+  }
+
   @override
   TextSpan buildTextSpan({
     required BuildContext context,
     TextStyle? style,
     required bool withComposing,
   }) {
+    final query = _findQuery;
+    if (query != null && query.isNotEmpty && text.isNotEmpty) {
+      return _buildFindHighlightSpan(style, query);
+    }
     final preview = _preview;
     if (preview == null || text.isEmpty) {
       return super.buildTextSpan(
@@ -1041,5 +1257,36 @@ class _PreviewTextEditingController extends TextEditingController {
         if (lineEnd < text.length) TextSpan(text: text.substring(lineEnd)),
       ],
     );
+  }
+
+  TextSpan _buildFindHighlightSpan(TextStyle? style, String query) {
+    final base = style ?? const TextStyle();
+    final matchStyle = base.copyWith(
+      backgroundColor: Colors.yellow.withValues(alpha: 0.45),
+      color: Colors.black,
+    );
+    final currentMatchStyle = base.copyWith(
+      backgroundColor: Colors.orange,
+      color: Colors.black,
+    );
+    final spans = <TextSpan>[];
+    int idx = 0;
+    while (idx <= text.length) {
+      final found = text.indexOf(query, idx);
+      if (found == -1) {
+        spans.add(TextSpan(text: text.substring(idx), style: style));
+        break;
+      }
+      if (found > idx) {
+        spans.add(TextSpan(text: text.substring(idx, found), style: style));
+      }
+      final isCurrent = found == _currentMatchStart;
+      spans.add(TextSpan(
+        text: text.substring(found, found + query.length),
+        style: isCurrent ? currentMatchStyle : matchStyle,
+      ));
+      idx = found + query.length;
+    }
+    return TextSpan(children: spans, style: style);
   }
 }
