@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../data/math_notes_repository.dart';
@@ -58,10 +59,15 @@ class MathNotesController extends ChangeNotifier {
       createdAt: now,
       updatedAt: now,
     ));
+    _sortByUpdatedDesc();
     debugPrint(
         '[math-notes] created id=$id title="$title" chars=${content.length}');
     notifyListeners();
     return id;
+  }
+
+  void _sortByUpdatedDesc() {
+    _notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
   }
 
   Future<bool> updateNote({
@@ -87,6 +93,7 @@ class MathNotesController extends ChangeNotifier {
     );
     await MathNotesRepository.instance.update(updated);
     _notes[index] = updated;
+    _sortByUpdatedDesc();
     debugPrint(
         '[math-notes] updated id=$id title="$title" chars=${content.length}');
     notifyListeners();
@@ -105,6 +112,34 @@ class MathNotesController extends ChangeNotifier {
     debugPrint('[math-notes] deleted id=$id title="${removed.title}"');
     notifyListeners();
     return true;
+  }
+
+  Future<void> seedDummyDataIfMissing() async {
+    if (!_loaded) await load();
+    final existingTitles = _notes.map((n) => n.title).toSet();
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final rng = math.Random();
+    DateTime atRandomTime(DateTime day) => day.add(Duration(
+          hours: rng.nextInt(24),
+          minutes: rng.nextInt(60),
+        ));
+    final samples = [
+      ('점메추', atRandomTime(today.subtract(const Duration(days: 1)))),
+      ('저메추', atRandomTime(today.subtract(const Duration(days: 7)))),
+      ('여긴어디나는누구', atRandomTime(today.subtract(const Duration(days: 30)))),
+    ];
+    var seeded = 0;
+    for (final (title, at) in samples) {
+      if (existingTitles.contains(title)) continue;
+      await addNote(title: title, content: '', createdAt: at);
+      seeded++;
+    }
+    if (seeded > 0) {
+      debugPrint('[math-notes] seeded $seeded dummy note(s)');
+    } else {
+      debugPrint('[math-notes] dummy seed skipped (all titles present)');
+    }
   }
 
   Future<int> deleteSelected() async {
@@ -196,6 +231,7 @@ class MathNotesScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
+        final rows = _buildRows(controller.notes, controller.groupByDate);
         return Column(
           children: [
             Expanded(
@@ -206,72 +242,30 @@ class MathNotesScreen extends StatelessWidget {
                         style: TextStyle(color: Colors.grey, fontSize: 18),
                       ),
                     )
-                  : ListView.separated(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 12),
-                      itemCount: controller.notes.length,
-                      separatorBuilder: (_, _) =>
-                          Divider(color: Colors.grey[850], height: 1),
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+                      itemCount: rows.length,
                       itemBuilder: (context, index) {
-                        final note = controller.notes[index];
-                        final inSelectionMode = controller.selectionMode;
-                        final isSelected =
-                            controller.selected.contains(note.id);
-                        return InkWell(
-                          onTap: inSelectionMode
-                              ? () => controller.toggleSelected(note.id)
-                              : () => _onOpenNote(context, note),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                                vertical: 14, horizontal: 8),
-                            child: Row(
-                              children: [
-                                AnimatedContainer(
-                                  duration:
-                                      const Duration(milliseconds: 180),
-                                  curve: Curves.easeOut,
-                                  width: inSelectionMode ? 36 : 0,
-                                  child: inSelectionMode
-                                      ? Center(
-                                          child: Container(
-                                            width: 24,
-                                            height: 24,
-                                            decoration: BoxDecoration(
-                                              shape: BoxShape.circle,
-                                              border: Border.all(
-                                                color: isSelected
-                                                    ? Colors.orange
-                                                    : Colors.grey,
-                                                width: 2,
-                                              ),
-                                              color: isSelected
-                                                  ? Colors.orange
-                                                  : Colors.transparent,
-                                            ),
-                                            child: isSelected
-                                                ? const Icon(Icons.check,
-                                                    size: 16,
-                                                    color: Colors.white)
-                                                : null,
-                                          ),
-                                        )
-                                      : null,
-                                ),
-                                Expanded(
-                                  child: Text(
-                                    note.title,
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
+                        final row = rows[index];
+                        final grouped = controller.groupByDate;
+                        if (row is _HeaderRow) {
+                          return _buildGroupHeader(row.label,
+                              isFirst: index == 0);
+                        }
+                        final note = (row as _ItemRow).note;
+                        final showTopDivider =
+                            index > 0 && rows[index - 1] is _ItemRow;
+                        return Column(
+                          children: [
+                            if (showTopDivider)
+                              Divider(
+                                color: Colors.grey[850],
+                                height: 1,
+                                indent: grouped ? 24 : 0,
+                              ),
+                            _buildNoteTile(context, note,
+                                indented: grouped),
+                          ],
                         );
                       },
                     ),
@@ -281,6 +275,151 @@ class MathNotesScreen extends StatelessWidget {
         );
       },
     );
+  }
+
+  Widget _buildGroupHeader(String label, {required bool isFirst}) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(8, isFirst ? 4 : 24, 8, 8),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNoteTile(BuildContext context, MathNote note,
+      {bool indented = false}) {
+    final inSelectionMode = controller.selectionMode;
+    final isSelected = controller.selected.contains(note.id);
+    final preview = _firstLine(note.content);
+    final subtitleStyle = TextStyle(
+      color: Colors.grey[500],
+      fontSize: 13,
+    );
+    return InkWell(
+      onTap: inSelectionMode
+          ? () => controller.toggleSelected(note.id)
+          : () => _onOpenNote(context, note),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(indented ? 24 : 8, 14, 8, 14),
+        child: Row(
+          children: [
+            AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOut,
+              width: inSelectionMode ? 36 : 0,
+              child: inSelectionMode
+                  ? Center(
+                      child: Container(
+                        width: 24,
+                        height: 24,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color:
+                                isSelected ? Colors.orange : Colors.grey,
+                            width: 2,
+                          ),
+                          color: isSelected
+                              ? Colors.orange
+                              : Colors.transparent,
+                        ),
+                        child: isSelected
+                            ? const Icon(Icons.check,
+                                size: 16, color: Colors.white)
+                            : null,
+                      ),
+                    )
+                  : null,
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    note.title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w500,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Text(
+                        _formatDateTime(note.createdAt),
+                        style: subtitleStyle,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          preview.isEmpty ? '텍스트 없음' : preview,
+                          style: subtitleStyle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  static String _firstLine(String content) {
+    if (content.isEmpty) return '';
+    final newlineIdx = content.indexOf('\n');
+    final line = newlineIdx == -1 ? content : content.substring(0, newlineIdx);
+    return line.trim();
+  }
+
+  static String _formatDateTime(DateTime dt) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${dt.year}. ${dt.month}. ${dt.day}. ${two(dt.hour)}:${two(dt.minute)}';
+  }
+
+  static String _groupLabelFor(DateTime when) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final whenDay = DateTime(when.year, when.month, when.day);
+    final daysDiff = today.difference(whenDay).inDays;
+    if (daysDiff <= 0) return '오늘';
+    if (daysDiff == 1) return '어제';
+    if (daysDiff <= 7) return '최근 7일';
+    if (daysDiff <= 30) return '최근 30일';
+    return '이전';
+  }
+
+  static List<_NoteRow> _buildRows(List<MathNote> notes, bool grouped) {
+    if (!grouped) {
+      return [for (final n in notes) _ItemRow(n)];
+    }
+    const order = ['오늘', '어제', '최근 7일', '최근 30일', '이전'];
+    final groups = <String, List<MathNote>>{};
+    for (final n in notes) {
+      final label = _groupLabelFor(n.updatedAt);
+      groups.putIfAbsent(label, () => []).add(n);
+    }
+    final rows = <_NoteRow>[];
+    for (final label in order) {
+      final list = groups[label];
+      if (list == null || list.isEmpty) continue;
+      rows.add(_HeaderRow(label));
+      rows.addAll(list.map(_ItemRow.new));
+    }
+    return rows;
   }
 
   Widget _buildBottomBar(BuildContext context) {
@@ -327,4 +466,16 @@ class MathNotesScreen extends StatelessWidget {
       ),
     );
   }
+}
+
+sealed class _NoteRow {}
+
+class _HeaderRow extends _NoteRow {
+  final String label;
+  _HeaderRow(this.label);
+}
+
+class _ItemRow extends _NoteRow {
+  final MathNote note;
+  _ItemRow(this.note);
 }

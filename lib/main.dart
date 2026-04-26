@@ -60,7 +60,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
     _mathNotesController = MathNotesController();
-    unawaited(_mathNotesController.load());
+    unawaited(_mathNotesController.seedDummyDataIfMissing());
     _screens = [
       const BasicCalculatorScreen(),
       const ScientificCalculatorScreen(),
