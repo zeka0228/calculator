@@ -147,7 +147,7 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   Color get _hintColor =>
       _isLight ? Colors.grey.shade500 : Colors.grey.shade600;
 
-  void _saveCurrentNote() {
+  Future<void> _saveCurrentNote() async {
     final text = _textController.text;
     final existing = widget.existingNote;
     if (text.trim().isEmpty && existing == null) return;
@@ -157,40 +157,48 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     final body = firstNewline == -1 ? '' : text.substring(firstNewline + 1);
     final title = rawTitle.isEmpty ? '제목 없음' : rawTitle;
     if (existing != null) {
-      widget.controller.updateNote(
+      await widget.controller.updateNote(
         id: existing.id,
         title: title,
         content: body,
       );
     } else {
-      widget.controller.addNote(
+      await widget.controller.addNote(
         title: title,
         content: body,
-        createdAt: DateTime.now(),
       );
     }
   }
 
-  void _saveAndExit() {
-    _saveCurrentNote();
+  Future<void> _saveAndExit() async {
+    await _saveCurrentNote();
+    if (!mounted) return;
     Navigator.of(context).pop();
   }
 
-  void _saveAndSwitchMode(int modeIndex) {
-    _saveCurrentNote();
+  Future<void> _saveAndSwitchMode(int modeIndex) async {
+    await _saveCurrentNote();
+    if (!mounted) return;
     Navigator.of(context).pop();
     widget.onSwitchMode?.call(modeIndex);
   }
 
-  void _discardAndExit() {
-    debugPrint(
-        '[math-notes] draft discarded chars=${_textController.text.length}');
+  Future<void> _discardAndExit() async {
+    final existing = widget.existingNote;
+    if (existing != null) {
+      await widget.controller.deleteNote(existing.id);
+    } else {
+      debugPrint(
+          '[math-notes] draft discarded chars=${_textController.text.length}');
+    }
+    if (!mounted) return;
     Navigator.of(context).pop();
   }
 
-  void _openOtherNote(MathNote target) {
+  Future<void> _openOtherNote(MathNote target) async {
     if (widget.existingNote?.id == target.id) return;
-    _saveCurrentNote();
+    await _saveCurrentNote();
+    if (!mounted) return;
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
         builder: (_) => NewMathNoteScreen(
@@ -228,7 +236,7 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
         });
         break;
       case 'delete':
-        _discardAndExit();
+        await _discardAndExit();
         break;
     }
   }

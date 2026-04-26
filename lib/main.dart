@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -59,6 +60,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
     _mathNotesController = MathNotesController();
+    unawaited(_mathNotesController.load());
     _screens = [
       const BasicCalculatorScreen(),
       const ScientificCalculatorScreen(),
@@ -363,6 +365,67 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
+  Widget _buildSelectionModeBar() {
+    final selectedCount = _mathNotesController.selected.length;
+    final hasSelection = selectedCount > 0;
+    return Stack(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8.0, top: 10.0),
+            child: TextButton(
+              onPressed: _mathNotesController.exitSelectionMode,
+              child: const Text(
+                '취소',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Align(
+          alignment: Alignment.center,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10.0),
+            child: Text(
+              hasSelection ? '$selectedCount개 선택됨' : '항목 선택',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 8.0, top: 10.0),
+            child: TextButton(
+              onPressed: hasSelection
+                  ? () => unawaited(_mathNotesController.deleteSelected())
+                  : null,
+              child: Text(
+                '삭제',
+                style: TextStyle(
+                  color: hasSelection
+                      ? Colors.red
+                      : Colors.red.withValues(alpha: 0.4),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -376,6 +439,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               animation: _mathNotesController,
               builder: (context, _) {
                 final isMathNotes = _selectedIndex == _mathNotesIndex;
+                if (isMathNotes && _mathNotesController.selectionMode) {
+                  return _buildSelectionModeBar();
+                }
                 return Stack(
                   children: [
                     if (isMathNotes)

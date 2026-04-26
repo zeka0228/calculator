@@ -25,8 +25,9 @@ class DatabaseHelper {
     debugPrint('[db] opening: $path');
     final db = await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
     debugPrint('[db] opened (version=${await db.getVersion()})');
     return db;
@@ -45,6 +46,31 @@ class DatabaseHelper {
     await db.execute(
       'CREATE INDEX idx_history_created_at ON history(created_at)',
     );
+    await _createMathNotesTable(db);
+  }
+
+  Future<void> _onUpgrade(
+      Database db, int oldVersion, int newVersion) async {
+    debugPrint('[db] onUpgrade $oldVersion → $newVersion');
+    if (oldVersion < 2) {
+      await _createMathNotesTable(db);
+    }
+  }
+
+  Future<void> _createMathNotesTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE math_notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      )
+    ''');
+    await db.execute(
+      'CREATE INDEX idx_math_notes_updated_at ON math_notes(updated_at)',
+    );
+    debugPrint('[db] created math_notes table + index');
   }
 
   Future<void> close() async {
