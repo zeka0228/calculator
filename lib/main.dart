@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
@@ -40,13 +41,12 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
+  late final MathNotesController _mathNotesController;
+  late final List<Widget> _screens;
+  final GlobalKey _overflowKey = GlobalKey();
 
-  final List<Widget> _screens = [
-    const BasicCalculatorScreen(),
-    const ScientificCalculatorScreen(),
-    const MathNotesScreen(),
-    const ConverterScreen(),
-  ];
+  static const int _mathNotesIndex = 2;
+  static const int _converterIndex = 3;
 
   final List<String> _labels = ['기본', '공학용', '수학 메모', '변환'];
 
@@ -56,6 +56,28 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     CupertinoIcons.pencil_outline,
     CupertinoIcons.arrow_2_squarepath,
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    _mathNotesController = MathNotesController();
+    unawaited(_mathNotesController.seedDummyDataIfMissing());
+    _screens = [
+      const BasicCalculatorScreen(),
+      const ScientificCalculatorScreen(),
+      MathNotesScreen(
+        controller: _mathNotesController,
+        onSwitchMode: _onItemTapped,
+      ),
+      const ConverterScreen(),
+    ];
+  }
+
+  @override
+  void dispose() {
+    _mathNotesController.dispose();
+    super.dispose();
+  }
 
   void _onItemTapped(int index) {
     setState(() {
@@ -98,6 +120,397 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     );
   }
 
+  Widget _buildHistoryButton() {
+    return Material(
+      color: Colors.grey[900],
+      shape: CircleBorder(
+        side: BorderSide(color: Colors.grey[700]!, width: 2),
+      ),
+      child: InkWell(
+        customBorder: const CircleBorder(),
+        onTap: _openHistory,
+        child: const SizedBox(
+          width: 80,
+          height: 80,
+          child: Icon(
+            CupertinoIcons.clock,
+            color: Colors.white,
+            size: 36,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModeSelector({required bool hideConverter}) {
+    return Container(
+      width: 80,
+      height: 80,
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.grey[700]!, width: 2),
+      ),
+      child: PopupMenuButton<int>(
+        padding: EdgeInsets.zero,
+        offset: const Offset(0, 85),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        color: Colors.grey[900],
+        onSelected: _onItemTapped,
+        icon: Container(
+          width: 40,
+          height: 48,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white, width: 3),
+            borderRadius: BorderRadius.circular(6),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                margin: const EdgeInsets.symmetric(horizontal: 4),
+                height: 7,
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(1),
+                ),
+              ),
+              const SizedBox(height: 5),
+              Expanded(
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: List.generate(
+                      3,
+                      (row) => Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: List.generate(
+                          3,
+                          (col) => Container(
+                            width: 5,
+                            height: 5,
+                            decoration: const BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        itemBuilder: (context) {
+          List<PopupMenuEntry<int>> menuItems = [];
+          for (int i = 0; i < _labels.length; i++) {
+            if (hideConverter && i == _converterIndex) continue;
+            menuItems.add(
+              PopupMenuItem<int>(
+                value: i,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      child: _selectedIndex == i
+                          ? const Icon(Icons.check,
+                              size: 18, color: Colors.white)
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(_icons[i], size: 20, color: Colors.white),
+                    const SizedBox(width: 12),
+                    Text(
+                      _labels[i],
+                      style:
+                          const TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }
+          return menuItems;
+        },
+      ),
+    );
+  }
+
+  Widget _buildMathNotesOverflowButton() {
+    return Container(
+      key: _overflowKey,
+      width: 80,
+      height: 80,
+      decoration: BoxDecoration(
+        color: Colors.grey[900],
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.grey[700]!, width: 2),
+      ),
+      child: PopupMenuButton<String>(
+        padding: EdgeInsets.zero,
+        offset: const Offset(0, 85),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        color: Colors.grey[900],
+        icon: const Icon(
+          Icons.more_horiz,
+          color: Colors.white,
+          size: 36,
+        ),
+        onSelected: (value) {
+          switch (value) {
+            case 'select':
+              _mathNotesController.enterSelectionMode();
+              break;
+            case 'sort':
+              unawaited(_showSortSubMenu());
+              break;
+            case 'group':
+              _mathNotesController.toggleGroupByDate();
+              break;
+          }
+        },
+        itemBuilder: (context) {
+          final isTitleSort = _mathNotesController.sortOrder ==
+              MathNotesSortOrder.title;
+          return [
+            const PopupMenuItem<String>(
+              value: 'select',
+              child: Row(
+                children: [
+                  SizedBox(width: 24),
+                  SizedBox(width: 8),
+                  Icon(Icons.check_circle_outline,
+                      size: 20, color: Colors.white),
+                  SizedBox(width: 12),
+                  Text(
+                    '메모 선택',
+                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  ),
+                ],
+              ),
+            ),
+            PopupMenuItem<String>(
+              value: 'sort',
+              height: 56,
+              child: Row(
+                children: [
+                  const SizedBox(width: 24),
+                  const SizedBox(width: 8),
+                  const Icon(Icons.sort, size: 20, color: Colors.white),
+                  const SizedBox(width: 12),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        '다음으로 정렬',
+                        style: TextStyle(
+                            color: Colors.white, fontSize: 16),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _sortLabel(_mathNotesController.sortOrder),
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            if (!isTitleSort)
+              PopupMenuItem<String>(
+                value: 'group',
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      child: _mathNotesController.groupByDate
+                          ? const Icon(Icons.check,
+                              size: 18, color: Colors.white)
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.calendar_today,
+                        size: 20, color: Colors.white),
+                    const SizedBox(width: 12),
+                    const Text(
+                      '날짜별로 그룹화',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
+          ];
+        },
+      ),
+    );
+  }
+
+  static String _sortLabel(MathNotesSortOrder order) {
+    switch (order) {
+      case MathNotesSortOrder.dateModified:
+        return '편집일';
+      case MathNotesSortOrder.dateCreated:
+        return '생성일';
+      case MathNotesSortOrder.title:
+        return '제목';
+    }
+  }
+
+  Future<void> _showSortSubMenu() async {
+    final keyContext = _overflowKey.currentContext;
+    if (keyContext == null) return;
+    final RenderBox button = keyContext.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(button.size.bottomLeft(Offset.zero),
+            ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero),
+            ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    final current = _mathNotesController.sortOrder;
+    final result = await showMenu<MathNotesSortOrder>(
+      context: context,
+      position: position,
+      color: Colors.grey[900],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      items: [
+        for (final option in MathNotesSortOrder.values)
+          PopupMenuItem<MathNotesSortOrder>(
+            value: option,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: current == option
+                      ? const Icon(Icons.check,
+                          size: 18, color: Colors.white)
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _sortLabel(option),
+                  style:
+                      const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (result != null) {
+      _mathNotesController.setSortOrder(result);
+    }
+  }
+
+  Widget _buildMathNotesTitle() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10.0),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Text(
+            '수학 메모',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 28,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            '${_mathNotesController.count}개의 메모',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.grey[400],
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSelectionModeBar() {
+    final selectedCount = _mathNotesController.selected.length;
+    final hasSelection = selectedCount > 0;
+    return Stack(
+      children: [
+        Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8.0, top: 10.0),
+            child: TextButton(
+              onPressed: _mathNotesController.exitSelectionMode,
+              child: const Text(
+                '취소',
+                style: TextStyle(
+                  color: Colors.orange,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ),
+        Align(
+          alignment: Alignment.center,
+          child: Padding(
+            padding: const EdgeInsets.only(top: 10.0),
+            child: Text(
+              hasSelection ? '$selectedCount개 선택됨' : '항목 선택',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: Padding(
+            padding: const EdgeInsets.only(right: 8.0, top: 10.0),
+            child: TextButton(
+              onPressed: hasSelection
+                  ? () => unawaited(_mathNotesController.deleteSelected())
+                  : null,
+              child: Text(
+                '삭제',
+                style: TextStyle(
+                  color: hasSelection
+                      ? Colors.red
+                      : Colors.red.withValues(alpha: 0.4),
+                  fontSize: 17,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -107,130 +520,49 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           backgroundColor: Colors.transparent,
           elevation: 0,
           flexibleSpace: SafeArea(
-            child: Stack(
-              children: [
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Padding(
-                    padding: const EdgeInsets.only(left: 16.0, top: 10.0),
-                    child: Material(
-                      color: Colors.grey[900],
-                      shape: CircleBorder(
-                        side: BorderSide(color: Colors.grey[700]!, width: 2),
-                      ),
-                      child: InkWell(
-                        customBorder: const CircleBorder(),
-                        onTap: _openHistory,
-                        child: const SizedBox(
-                          width: 80,
-                          height: 80,
-                          child: Icon(
-                            CupertinoIcons.clock,
-                            color: Colors.white,
-                            size: 36,
-                          ),
+            child: AnimatedBuilder(
+              animation: _mathNotesController,
+              builder: (context, _) {
+                final isMathNotes = _selectedIndex == _mathNotesIndex;
+                if (isMathNotes && _mathNotesController.selectionMode) {
+                  return _buildSelectionModeBar();
+                }
+                return Stack(
+                  children: [
+                    if (isMathNotes)
+                      Align(
+                        alignment: Alignment.center,
+                        child: _buildMathNotesTitle(),
+                      )
+                    else
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.only(
+                              left: 16.0, top: 10.0),
+                          child: _buildHistoryButton(),
                         ),
                       ),
-                    ),
-                  ),
-                ),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: Padding(
-                    padding: const EdgeInsets.only(right: 16.0, top: 10.0),
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[900],
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.grey[700]!, width: 2),
-                      ),
-                      child: PopupMenuButton<int>(
-                    padding: EdgeInsets.zero,
-                    offset: const Offset(0, 85),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    color: Colors.grey[900],
-                    onSelected: _onItemTapped,
-                    icon: Container(
-                      width: 40,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        border: Border.all(color: Colors.white, width: 3),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Container(
-                            margin: const EdgeInsets.symmetric(horizontal: 4),
-                            height: 7,
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(1),
-                            ),
-                          ),
-                          const SizedBox(height: 5),
-                          Expanded(
-                            child: Padding(
-                              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                children: List.generate(3, (row) => Row(
-                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                  children: List.generate(3, (col) => Container(
-                                    width: 5,
-                                    height: 5,
-                                    decoration: const BoxDecoration(
-                                      color: Colors.white,
-                                      shape: BoxShape.circle,
-                                    ),
-                                  )),
-                                )),
-                              ),
-                            ),
-                          ),
-                        ],
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: Padding(
+                        padding:
+                            const EdgeInsets.only(right: 16.0, top: 10.0),
+                        child: isMathNotes
+                            ? Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  _buildModeSelector(hideConverter: true),
+                                  const SizedBox(width: 12),
+                                  _buildMathNotesOverflowButton(),
+                                ],
+                              )
+                            : _buildModeSelector(hideConverter: false),
                       ),
                     ),
-                    itemBuilder: (context) {
-                      List<PopupMenuEntry<int>> menuItems = [];
-                      for (int i = 0; i < _labels.length; i++) {
-                        if (i == 4) {
-                          menuItems.add(const PopupMenuDivider(height: 1));
-                        }
-                        menuItems.add(
-                          PopupMenuItem<int>(
-                            value: i,
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 24,
-                                  child: _selectedIndex == i
-                                      ? const Icon(Icons.check, size: 18, color: Colors.white)
-                                      : null,
-                                ),
-                                const SizedBox(width: 8),
-                                Icon(_icons[i], size: 20, color: Colors.white),
-                                const SizedBox(width: 12),
-                                Text(
-                                  _labels[i],
-                                  style: const TextStyle(color: Colors.white, fontSize: 16),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }
-                      return menuItems;
-                    },
-                  ),
-                ),
-              ),
-            ),
-              ],
+                  ],
+                );
+              },
             ),
           ),
         ),
