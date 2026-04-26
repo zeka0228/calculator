@@ -62,7 +62,10 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     _screens = [
       const BasicCalculatorScreen(),
       const ScientificCalculatorScreen(),
-      MathNotesScreen(controller: _mathNotesController),
+      MathNotesScreen(
+        controller: _mathNotesController,
+        onSwitchMode: _onItemTapped,
+      ),
       const ConverterScreen(),
     ];
   }
