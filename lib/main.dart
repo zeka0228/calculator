@@ -1,8 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'data/calc_history_repository.dart';
 import 'data/converter_controller.dart';
+import 'data/converter_data.dart';
+import 'logic/calculator_base.dart';
 import 'screens/basic_calculator_screen.dart';
 import 'screens/scientific_calculator_screen.dart';
 import 'screens/math_notes_screen.dart';
@@ -115,6 +119,70 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
     });
   }
 
+  void _onHistoryEntrySelected(CalcHistoryEntry entry) {
+    Navigator.of(context).pop();
+    if (entry.mode == 'converter') {
+      String resultExpression = entry.expression.split(' ').first;
+      if (entry.metadata != null) {
+        try {
+          final m = jsonDecode(entry.metadata!) as Map<String, dynamic>;
+          final categoryName = m['category'] as String?;
+          if (categoryName != null) {
+            for (final c in ConverterCategory.values) {
+              if (c.name == categoryName) {
+                _converterController.setCategory(c);
+                break;
+              }
+            }
+          }
+          final srcIdx = m['sourceUnitIndex'];
+          final tgtIdx = m['targetUnitIndex'];
+          if (srcIdx is int) {
+            _converterController.setUnitIndex(isSource: true, index: srcIdx);
+          }
+          if (tgtIdx is int) {
+            _converterController.setUnitIndex(isSource: false, index: tgtIdx);
+          }
+          final editingSource = m['editingSource'];
+          if (editingSource is bool) {
+            _converterController.setEditingSource(editingSource);
+          }
+          final sourceValue = m['sourceValue'];
+          if (sourceValue is String && sourceValue.isNotEmpty) {
+            resultExpression = sourceValue;
+          }
+        } catch (e) {
+          debugPrint('[history] converter metadata parse failed: $e');
+        }
+      }
+      setState(() {
+        _selectedIndex = _converterIndex;
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final state = _lastCalcIndex == 1
+            ? _scientificKey.currentState
+            : _basicKey.currentState;
+        if (state case CalcHistoryRestorable r) {
+          r.restoreFromHistory('', resultExpression);
+        }
+      });
+      return;
+    }
+    final isScientific = entry.mode == 'scientific';
+    setState(() {
+      _selectedIndex = isScientific ? 1 : 0;
+      _lastCalcIndex = _selectedIndex;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final state = isScientific
+          ? _scientificKey.currentState
+          : _basicKey.currentState;
+      if (state case CalcHistoryRestorable r) {
+        r.restoreFromHistory(entry.expression, entry.result);
+      }
+    });
+  }
+
   void _openHistory() {
     final sheetController = DraggableScrollableController();
     showModalBottomSheet(
@@ -141,6 +209,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 child: HistoryScreen(
                   scrollController: scrollController,
                   sheetController: sheetController,
+                  onSelectEntry: _onHistoryEntrySelected,
                 ),
               ),
             ),

@@ -6,18 +6,24 @@ class CalcHistoryEntry {
   final String expression;
   final String result;
   final DateTime createdAt;
+  final String mode;
+  final String? metadata;
 
   CalcHistoryEntry({
     this.id,
     required this.expression,
     required this.result,
     required this.createdAt,
+    this.mode = 'basic',
+    this.metadata,
   });
 
   Map<String, dynamic> toMap() => {
         'expression': expression,
         'result': result,
         'created_at': createdAt.millisecondsSinceEpoch,
+        'mode': mode,
+        'metadata': metadata,
       };
 
   factory CalcHistoryEntry.fromMap(Map<String, dynamic> map) =>
@@ -27,6 +33,8 @@ class CalcHistoryEntry {
         result: map['result'] as String,
         createdAt:
             DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+        mode: (map['mode'] as String?) ?? 'basic',
+        metadata: map['metadata'] as String?,
       );
 }
 
@@ -34,12 +42,19 @@ class CalcHistoryRepository {
   static final CalcHistoryRepository instance = CalcHistoryRepository._();
   CalcHistoryRepository._();
 
-  Future<int> insert(String expression, String result) async {
+  Future<int> insert(
+    String expression,
+    String result, {
+    String mode = 'basic',
+    String? metadata,
+  }) async {
     final db = await DatabaseHelper.instance.database;
     final entry = CalcHistoryEntry(
       expression: expression,
       result: result,
       createdAt: DateTime.now(),
+      mode: mode,
+      metadata: metadata,
     );
     return await db.insert('history', entry.toMap());
   }

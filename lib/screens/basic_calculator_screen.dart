@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../data/converter_controller.dart';
 import '../widgets/calculator_button.dart';
@@ -48,6 +50,16 @@ class _BasicCalculatorScreenState extends State<BasicCalculatorScreen> with Calc
         handleOperator(text);
       } else if (text == '=') {
         handleEquals();
+        const errorStates = {'정의되지 않음', '오버플로', 'Error'};
+        final controller = widget.converterController;
+        if (widget.showConverter &&
+            controller != null &&
+            !errorStates.contains(expression)) {
+          unawaited(saveConversionToHistory(
+            sourceText: expression,
+            controller: controller,
+          ));
+        }
       }
     });
   }

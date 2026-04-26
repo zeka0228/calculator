@@ -1,8 +1,10 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
+import '../data/calc_history_repository.dart';
 import '../data/converter_controller.dart';
 import '../data/converter_data.dart';
 import '../data/currency_repository.dart';
@@ -30,6 +32,70 @@ const List<String> _kCurrencyOrder = [
   'ZAR',
   'THB',
 ];
+
+double _parseInputValue(String text) {
+  final n = double.tryParse(text.replaceAll(',', ''));
+  if (n != null) return n;
+  final res = evaluateMemoExpression(text);
+  if (res != null) return double.tryParse(res) ?? 0;
+  return 0;
+}
+
+String _formatNumberValue(double v) {
+  if (v.isNaN) return 'NaN';
+  if (v.isInfinite) return '∞';
+  if (v == v.truncateToDouble() && v.abs() < 1e15) {
+    return v.toInt().toString();
+  }
+  var s = v.toStringAsFixed(8);
+  s = s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
+  return s;
+}
+
+Future<void> saveConversionToHistory({
+  required String sourceText,
+  required ConverterController controller,
+}) async {
+  final units = _unitsForCategory(controller.category);
+  if (units.isEmpty) return;
+  final src = units[controller.sourceUnitIndex.clamp(0, units.length - 1)];
+  final tgt = units[controller.targetUnitIndex.clamp(0, units.length - 1)];
+  final input = _parseInputValue(sourceText);
+  final inputText = _formatNumberValue(input);
+  String fromValue, fromLabel, toValue, toLabel;
+  if (controller.editingSource) {
+    fromValue = inputText;
+    fromLabel = src.label;
+    toValue = _formatNumberValue(
+        tgt.converter.fromBase(src.converter.toBase(input)));
+    toLabel = tgt.label;
+  } else {
+    fromValue = inputText;
+    fromLabel = tgt.label;
+    toValue = _formatNumberValue(
+        src.converter.fromBase(tgt.converter.toBase(input)));
+    toLabel = src.label;
+  }
+  final metadata = jsonEncode({
+    'category': controller.category.name,
+    'sourceUnitIndex': controller.sourceUnitIndex,
+    'targetUnitIndex': controller.targetUnitIndex,
+    'editingSource': controller.editingSource,
+    'sourceValue': sourceText,
+  });
+  try {
+    final id = await CalcHistoryRepository.instance.insert(
+      '$fromValue $fromLabel',
+      '$toValue $toLabel',
+      mode: 'converter',
+      metadata: metadata,
+    );
+    debugPrint(
+        '[converter] history saved id=$id  $fromValue $fromLabel = $toValue $toLabel');
+  } catch (e, st) {
+    debugPrint('[converter] history save FAILED: $e\n$st');
+  }
+}
 
 List<ConverterUnit> _unitsForCategory(ConverterCategory cat) {
   if (cat == ConverterCategory.currency) {
@@ -100,25 +166,8 @@ class _ConverterDisplayState extends State<ConverterDisplay> {
     if (mounted) setState(() {});
   }
 
-  double _parseSource() {
-    final text = widget.sourceText;
-    final n = double.tryParse(text.replaceAll(',', ''));
-    if (n != null) return n;
-    final res = evaluateMemoExpression(text);
-    if (res != null) return double.tryParse(res) ?? 0;
-    return 0;
-  }
-
-  String _formatNumber(double v) {
-    if (v.isNaN) return 'NaN';
-    if (v.isInfinite) return '∞';
-    if (v == v.truncateToDouble() && v.abs() < 1e15) {
-      return v.toInt().toString();
-    }
-    var s = v.toStringAsFixed(8);
-    s = s.replaceAll(RegExp(r'0+$'), '').replaceAll(RegExp(r'\.$'), '');
-    return s;
-  }
+  double _parseSource() => _parseInputValue(widget.sourceText);
+  String _formatNumber(double v) => _formatNumberValue(v);
 
   String _formatRateTime(DateTime t) {
     String two(int n) => n.toString().padLeft(2, '0');

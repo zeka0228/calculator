@@ -2,12 +2,30 @@ import 'package:flutter/material.dart';
 import 'package:math_expressions/math_expressions.dart';
 import '../data/calc_history_repository.dart';
 
-mixin CalculatorBase<T extends StatefulWidget> on State<T> {
+abstract interface class CalcHistoryRestorable {
+  void restoreFromHistory(String historyText, String resultText);
+}
+
+mixin CalculatorBase<T extends StatefulWidget> on State<T>
+    implements CalcHistoryRestorable {
   String expression = '0';
   String history = '';
   bool isResultDisplayed = false;
   String? lastOp;
   String? lastOperandStr;
+
+  String get historyMode => 'basic';
+
+  @override
+  void restoreFromHistory(String historyText, String resultText) {
+    setState(() {
+      history = historyText;
+      expression = resultText;
+      isResultDisplayed = true;
+      lastOp = null;
+      lastOperandStr = null;
+    });
+  }
 
   /// 현재 수식에서 최상위 마지막 이항 연산자와 우항을 추출해 lastOp/lastOperandStr에 저장.
   /// 우항이 단순 숫자가 아니면 둘 다 null.
@@ -124,9 +142,12 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T> {
     }
     final exprToSave = history;
     final resultToSave = expression;
-    CalcHistoryRepository.instance.insert(exprToSave, resultToSave).then(
+    CalcHistoryRepository.instance
+        .insert(exprToSave, resultToSave, mode: historyMode)
+        .then(
       (id) {
-        debugPrint('[history] saved id=$id  $exprToSave = $resultToSave');
+        debugPrint(
+            '[history] saved id=$id mode=$historyMode  $exprToSave = $resultToSave');
       },
       onError: (e, st) {
         debugPrint('[history] save FAILED: $e\n$st');

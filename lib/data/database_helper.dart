@@ -25,7 +25,7 @@ class DatabaseHelper {
     debugPrint('[db] opening: $path');
     final db = await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -40,7 +40,9 @@ class DatabaseHelper {
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         expression TEXT NOT NULL,
         result TEXT NOT NULL,
-        created_at INTEGER NOT NULL
+        created_at INTEGER NOT NULL,
+        mode TEXT NOT NULL DEFAULT 'basic',
+        metadata TEXT
       )
     ''');
     await db.execute(
@@ -68,6 +70,13 @@ class DatabaseHelper {
       );
       debugPrint('[db] math_notes: added lines_grid column');
       await _createSettingsTable(db);
+    }
+    if (oldVersion < 5) {
+      await db.execute(
+        "ALTER TABLE history ADD COLUMN mode TEXT NOT NULL DEFAULT 'basic'",
+      );
+      await db.execute('ALTER TABLE history ADD COLUMN metadata TEXT');
+      debugPrint('[db] history: added mode + metadata columns');
     }
   }
 

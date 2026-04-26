@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import '../data/converter_controller.dart';
 import '../widgets/calculator_button.dart';
@@ -19,6 +21,9 @@ class ScientificCalculatorScreen extends StatefulWidget {
 }
 
 class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen> with CalculatorBase {
+  @override
+  String get historyMode => 'scientific';
+
   bool _isRad = true;
   bool _is2nd = false;
   double _memoryValue = 0;
@@ -94,7 +99,9 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
       }
 
       if (RegExp(r'^[0-9]$').hasMatch(text)) {
-        if (!isResultDisplayed && _shouldPrependMultiplication()) {
+        if (!isResultDisplayed &&
+            _shouldPrependMultiplication() &&
+            !RegExp(r'[0-9.]$').hasMatch(expression)) {
           expression += '×';
         }
         handleNumber(text);
@@ -117,6 +124,16 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
         handleOperator(text);
       } else if (text == '=') {
         _calculateWithScientific();
+        const errorStates = {'정의되지 않음', '오버플로', 'Error'};
+        final controller = widget.converterController;
+        if (widget.showConverter &&
+            controller != null &&
+            !errorStates.contains(expression)) {
+          unawaited(saveConversionToHistory(
+            sourceText: expression,
+            controller: controller,
+          ));
+        }
       } else if (text == '(' || text == ')') {
         _handleParenthesis(text);
       } else if (['mc', 'm+', 'm-', 'mr'].contains(text)) {
