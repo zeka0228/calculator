@@ -1,6 +1,8 @@
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../logic/memo_math_eval.dart';
 import '../widgets/calc_mode_icon.dart';
 import 'math_notes_screen.dart';
 
@@ -92,9 +94,12 @@ class NewMathNoteScreen extends StatefulWidget {
 }
 
 class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
-  final TextEditingController _textController = TextEditingController();
+  final _PreviewTextEditingController _textController =
+      _PreviewTextEditingController();
   final UndoHistoryController _undoController = UndoHistoryController();
   final FocusNode _focusNode = FocusNode();
+  String _lastText = '';
+  String? _activePreview;
 
   bool _pinned = false;
   NoteBackground _background = NoteBackground.dark;
@@ -124,6 +129,7 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
         selection: TextSelection.collapsed(offset: initialText.length),
       );
     }
+    _lastText = _textController.text;
     _textController.addListener(_onTextChanged);
   }
 
@@ -137,7 +143,96 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   }
 
   void _onTextChanged() {
-    setState(() {});
+    final newText = _textController.text;
+    final cursor = _textController.selection.baseOffset;
+
+    if (_activePreview != null &&
+        newText.length == _lastText.length + 1 &&
+        cursor > 0 &&
+        newText[cursor - 1] == '\n') {
+      _acceptPreview(newlinePos: cursor - 1);
+      return;
+    }
+
+    _lastText = newText;
+    _updatePreview();
+    if (mounted) setState(() {});
+  }
+
+  void _updatePreview() {
+    final text = _textController.text;
+    final cursor = _textController.selection.baseOffset;
+    String? preview;
+    if (cursor >= 0 && cursor <= text.length) {
+      final lineStart =
+          cursor == 0 ? 0 : text.lastIndexOf('\n', cursor - 1) + 1;
+      var lineEnd = text.indexOf('\n', cursor);
+      if (lineEnd == -1) lineEnd = text.length;
+      final currentLine = text.substring(lineStart, lineEnd);
+      preview = evaluateMemoExpression(currentLine);
+    }
+    _activePreview = preview;
+    _textController.setPreview(preview);
+  }
+
+  String _missingCloseParens(String text, int lineStart, int lineEnd) {
+    final line = text.substring(lineStart, lineEnd);
+    final open = '('.allMatches(line).length;
+    final close = ')'.allMatches(line).length;
+    return open > close ? ')' * (open - close) : '';
+  }
+
+  void _acceptPreview({required int newlinePos}) {
+    final preview = _activePreview;
+    if (preview == null) return;
+    final text = _textController.text;
+    final lineStart =
+        newlinePos == 0 ? 0 : text.lastIndexOf('\n', newlinePos - 1) + 1;
+    final closing = _missingCloseParens(text, lineStart, newlinePos);
+    final accepted = '$closing = $preview';
+    final newText = text.substring(0, newlinePos) +
+        accepted +
+        text.substring(newlinePos + 1);
+    final newCursor = newlinePos + accepted.length;
+    _textController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newCursor),
+    );
+    _lastText = newText;
+    _activePreview = null;
+    _textController.setPreview(null);
+    debugPrint('[math-notes] preview accepted "$preview" closing="$closing"');
+  }
+
+  KeyEventResult _onKey(FocusNode node, KeyEvent event) {
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (event.logicalKey != LogicalKeyboardKey.tab) {
+      return KeyEventResult.ignored;
+    }
+    final preview = _activePreview;
+    if (preview == null) return KeyEventResult.ignored;
+    final text = _textController.text;
+    final cursor = _textController.selection.baseOffset;
+    if (cursor < 0) return KeyEventResult.ignored;
+    final lineStart =
+        cursor == 0 ? 0 : text.lastIndexOf('\n', cursor - 1) + 1;
+    var lineEnd = text.indexOf('\n', cursor);
+    if (lineEnd == -1) lineEnd = text.length;
+    final closing = _missingCloseParens(text, lineStart, lineEnd);
+    final accepted = '$closing = $preview';
+    final newText =
+        text.substring(0, lineEnd) + accepted + text.substring(lineEnd);
+    final newCursor = lineEnd + accepted.length;
+    _textController.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: newCursor),
+    );
+    _lastText = newText;
+    _activePreview = null;
+    _textController.setPreview(null);
+    debugPrint(
+        '[math-notes] preview accepted via tab "$preview" closing="$closing"');
+    return KeyEventResult.handled;
   }
 
   bool get _isEmpty => _textController.text.trim().isEmpty;
@@ -671,22 +766,26 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
                     ),
                   ),
                 ),
-              TextField(
-                controller: _textController,
-                undoController: _undoController,
-                focusNode: _focusNode,
-                autofocus: true,
-                maxLines: null,
-                expands: true,
-                textAlignVertical: TextAlignVertical.top,
-                cursorColor: Colors.orange,
-                style: TextStyle(color: _fgColor, fontSize: 16, height: 1.5),
-                decoration: InputDecoration(
-                  border: InputBorder.none,
-                  isCollapsed: true,
-                  contentPadding: EdgeInsets.zero,
-                  hintText: '제목과 내용을 입력하세요',
-                  hintStyle: TextStyle(color: _hintColor, fontSize: 16),
+              Focus(
+                onKeyEvent: _onKey,
+                child: TextField(
+                  controller: _textController,
+                  undoController: _undoController,
+                  focusNode: _focusNode,
+                  autofocus: true,
+                  maxLines: null,
+                  expands: true,
+                  textAlignVertical: TextAlignVertical.top,
+                  cursorColor: Colors.orange,
+                  style:
+                      TextStyle(color: _fgColor, fontSize: 16, height: 1.5),
+                  decoration: InputDecoration(
+                    border: InputBorder.none,
+                    isCollapsed: true,
+                    contentPadding: EdgeInsets.zero,
+                    hintText: '제목과 내용을 입력하세요',
+                    hintStyle: TextStyle(color: _hintColor, fontSize: 16),
+                  ),
                 ),
               ),
             ],
@@ -754,6 +853,58 @@ class _PatternTile extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _PreviewTextEditingController extends TextEditingController {
+  String? _preview;
+
+  String? get preview => _preview;
+
+  void setPreview(String? next) {
+    if (_preview == next) return;
+    _preview = next;
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    final preview = _preview;
+    if (preview == null || text.isEmpty) {
+      return super.buildTextSpan(
+        context: context,
+        style: style,
+        withComposing: withComposing,
+      );
+    }
+    final cursor = selection.baseOffset;
+    int lineEnd;
+    int lineStart;
+    if (cursor < 0 || cursor > text.length) {
+      lineEnd = text.length;
+      lineStart = text.lastIndexOf('\n') + 1;
+    } else {
+      final next = text.indexOf('\n', cursor);
+      lineEnd = next == -1 ? text.length : next;
+      lineStart = cursor == 0 ? 0 : text.lastIndexOf('\n', cursor - 1) + 1;
+    }
+    final line = text.substring(lineStart, lineEnd);
+    final open = '('.allMatches(line).length;
+    final close = ')'.allMatches(line).length;
+    final closing = open > close ? ')' * (open - close) : '';
+    final previewStyle =
+        (style ?? const TextStyle()).copyWith(color: Colors.orange);
+    return TextSpan(
+      style: style,
+      children: [
+        TextSpan(text: text.substring(0, lineEnd)),
+        TextSpan(text: '$closing = $preview', style: previewStyle),
+        if (lineEnd < text.length) TextSpan(text: text.substring(lineEnd)),
+      ],
     );
   }
 }
