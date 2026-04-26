@@ -23,6 +23,13 @@ class BasicCalculatorScreen extends StatefulWidget {
 }
 
 class _BasicCalculatorScreenState extends State<BasicCalculatorScreen> with CalculatorBase {
+  // 지울 만한 현재 입력값이 없을 땐(초기 상태, 결과 표시 직후, 연산자로 끝났을 때)
+  // C 대신 AC로 보여서 사용자가 전체 클리어 의도를 분명히 인식하도록 함.
+  bool _showAcLabel() =>
+      expression == '0' ||
+      isResultDisplayed ||
+      RegExp(r'[+\-×÷]$').hasMatch(expression);
+
   void _onButtonPressed(String text) {
     setState(() {
       const errorStates = {'정의되지 않음', '오버플로', 'Error'};
@@ -123,10 +130,10 @@ class _BasicCalculatorScreenState extends State<BasicCalculatorScreen> with Calc
               children: [
                 CalculatorButton(text: '⌫', bgColor: Colors.grey[600]!, textColor: Colors.white, onTap: () => _onButtonPressed('⌫')),
                 CalculatorButton(
-                  text: (expression == '0' || isResultDisplayed) ? 'AC' : 'C',
+                  text: _showAcLabel() ? 'AC' : 'C',
                   bgColor: Colors.grey[400]!,
                   textColor: Colors.black,
-                  onTap: () => _onButtonPressed((expression == '0' || isResultDisplayed) ? 'AC' : 'C'),
+                  onTap: () => _onButtonPressed(_showAcLabel() ? 'AC' : 'C'),
                 ),
                 CalculatorButton(text: '%', bgColor: Colors.grey[400]!, textColor: Colors.black, onTap: () => _onButtonPressed('%')),
                 CalculatorButton(text: '÷', bgColor: Colors.orange, textColor: Colors.white, onTap: () => _onButtonPressed('÷')),

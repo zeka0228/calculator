@@ -171,20 +171,42 @@ mixin CalculatorBase<T extends StatefulWidget> on State<T>
     lastOperandStr = null;
   }
 
+  // C(Clear Entry): 현재 입력 중인 마지막 숫자(또는 그룹)만 지우고, 앞쪽 식과 history는 유지.
+  // 마지막 최상위 이항 연산자 위치를 찾아서 그 뒤를 잘라낸다. 연산자가 없으면 전체를 '0'으로.
   void clearEntry() {
-    clearAll();
+    int lastOpPos = -1;
+    int depth = 0;
+    for (int i = expression.length - 1; i >= 0; i--) {
+      final ch = expression[i];
+      if (ch == ')') {
+        depth++;
+      } else if (ch == '(') {
+        if (depth > 0) depth--;
+      } else if (depth == 0 && (ch == '+' || ch == '-' || ch == '×' || ch == '÷')) {
+        // `-`가 단항(부호) 마이너스인 경우는 연산자로 보지 않는다.
+        if (ch == '-' && i > 0 && '+-×÷(^'.contains(expression[i - 1])) continue;
+        lastOpPos = i;
+        break;
+      }
+    }
+    if (lastOpPos == -1) {
+      expression = '0';
+    } else {
+      expression = expression.substring(0, lastOpPos + 1);
+    }
+    isResultDisplayed = false;
   }
 
+  // ⌫(한 글자 지우기): 현재 표시 중인 expression의 마지막 문자 하나만 제거.
+  // 직전 식(history)에는 절대 손대지 않는다 — 결과 표시 직후라도 사용자가 그 결과를
+  // 편집하기 시작했다고 보고 isResultDisplayed를 false로 내린다.
   void handleBackspace() {
-    if (isResultDisplayed) {
-      history = '';
-      return;
-    }
     if (expression.length > 1) {
       expression = expression.substring(0, expression.length - 1);
     } else {
       expression = '0';
     }
+    isResultDisplayed = false;
   }
 
   void toggleSign() {

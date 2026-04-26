@@ -24,6 +24,12 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
   @override
   String get historyMode => 'scientific';
 
+  // 공학용은 닫힘 괄호 / `!` 같은 종결 토큰 뒤에서도 C로 entry를 지울 수 있어야 자연스럽다.
+  bool _showAcLabel() =>
+      expression == '0' ||
+      isResultDisplayed ||
+      RegExp(r'[+\-×÷(^]$').hasMatch(expression);
+
   bool _isRad = true;
   bool _is2nd = false;
   double _memoryValue = 0;
@@ -1241,10 +1247,10 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
                 children: [
                   CalculatorButton(text: '⌫', bgColor: Colors.grey[600]!, textColor: Colors.white, onTap: () => _onButtonPressed('⌫')),
                   CalculatorButton(
-                    text: (expression == '0' || isResultDisplayed) ? 'AC' : 'C',
+                    text: _showAcLabel() ? 'AC' : 'C',
                     bgColor: Colors.grey[400]!,
                     textColor: Colors.black,
-                    onTap: () => _onButtonPressed((expression == '0' || isResultDisplayed) ? 'AC' : 'C'),
+                    onTap: () => _onButtonPressed(_showAcLabel() ? 'AC' : 'C'),
                   ),
                   CalculatorButton(text: '%', bgColor: Colors.grey[400]!, textColor: Colors.black, onTap: () => _onButtonPressed('%')),
                   CalculatorButton(text: '÷', bgColor: Colors.orange, textColor: Colors.white, onTap: () => _onButtonPressed('÷')),
