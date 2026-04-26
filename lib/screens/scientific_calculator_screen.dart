@@ -1,10 +1,18 @@
 import 'package:flutter/material.dart';
+import '../data/converter_controller.dart';
 import '../widgets/calculator_button.dart';
 import '../logic/calculator_base.dart';
 import 'package:math_expressions/math_expressions.dart';
+import 'converter_display.dart';
 
 class ScientificCalculatorScreen extends StatefulWidget {
-  const ScientificCalculatorScreen({super.key});
+  final bool showConverter;
+  final ConverterController? converterController;
+  const ScientificCalculatorScreen({
+    super.key,
+    this.showConverter = false,
+    this.converterController,
+  });
 
   @override
   State<ScientificCalculatorScreen> createState() => _ScientificCalculatorScreenState();
@@ -1107,50 +1115,57 @@ class _ScientificCalculatorScreenState extends State<ScientificCalculatorScreen>
 
   @override
   Widget build(BuildContext context) {
+    final showConverter =
+        widget.showConverter && widget.converterController != null;
     return Column(
       children: [
         Expanded(
-          child: Container(
-            alignment: Alignment.bottomRight,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Stack(
-              children: [
-                if (_isRad)
-                  const Align(
-                    alignment: Alignment.bottomLeft,
-                    child: Padding(
-                      padding: EdgeInsets.only(bottom: 8.0),
-                      child: Text(
-                        'Rad',
-                        style: TextStyle(fontSize: 14, color: Colors.grey, fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ),
-                Align(
+          child: showConverter
+              ? ConverterDisplay(
+                  sourceText: expression,
+                  controller: widget.converterController!,
+                )
+              : Container(
                   alignment: Alignment.bottomRight,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    crossAxisAlignment: CrossAxisAlignment.end,
+                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                  child: Stack(
                     children: [
-                      if (history.isNotEmpty)
-                        SingleChildScrollView(
-                          reverse: true,
-                          scrollDirection: Axis.horizontal,
-                          child: _buildHistoryDisplay(),
+                      if (_isRad)
+                        const Align(
+                          alignment: Alignment.bottomLeft,
+                          child: Padding(
+                            padding: EdgeInsets.only(bottom: 8.0),
+                            child: Text(
+                              'Rad',
+                              style: TextStyle(fontSize: 14, color: Colors.grey, fontWeight: FontWeight.bold),
+                            ),
+                          ),
                         ),
-                      const SizedBox(height: 8),
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        reverse: true,
-                        child: _buildExpressionDisplay(),
+                      Align(
+                        alignment: Alignment.bottomRight,
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            if (history.isNotEmpty)
+                              SingleChildScrollView(
+                                reverse: true,
+                                scrollDirection: Axis.horizontal,
+                                child: _buildHistoryDisplay(),
+                              ),
+                            const SizedBox(height: 8),
+                            SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              reverse: true,
+                              child: _buildExpressionDisplay(),
+                            ),
+                          ],
+                        ),
                       ),
                     ],
                   ),
                 ),
-              ],
-            ),
-          ),
         ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 8.0),

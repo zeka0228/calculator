@@ -2,9 +2,9 @@ import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/cupertino.dart';
+import 'data/converter_controller.dart';
 import 'screens/basic_calculator_screen.dart';
 import 'screens/scientific_calculator_screen.dart';
-import 'screens/converter_screen.dart';
 import 'screens/math_notes_screen.dart';
 import 'screens/history_screen.dart';
 import 'data/db_init.dart';
@@ -41,8 +41,12 @@ class MainNavigationScreen extends StatefulWidget {
 
 class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
+  int _lastCalcIndex = 0;
   late final MathNotesController _mathNotesController;
-  late final List<Widget> _screens;
+  late final ConverterController _converterController;
+  late final Widget _mathNotesScreen;
+  final GlobalKey _basicKey = GlobalKey();
+  final GlobalKey _scientificKey = GlobalKey();
   final GlobalKey _overflowKey = GlobalKey();
 
   static const int _mathNotesIndex = 2;
@@ -61,27 +65,53 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   void initState() {
     super.initState();
     _mathNotesController = MathNotesController();
+    _converterController = ConverterController();
     unawaited(_mathNotesController.seedDummyDataIfMissing());
-    _screens = [
-      const BasicCalculatorScreen(),
-      const ScientificCalculatorScreen(),
-      MathNotesScreen(
-        controller: _mathNotesController,
-        onSwitchMode: _onItemTapped,
-      ),
-      const ConverterScreen(),
-    ];
+    _mathNotesScreen = MathNotesScreen(
+      controller: _mathNotesController,
+      onSwitchMode: _onItemTapped,
+    );
   }
 
   @override
   void dispose() {
     _mathNotesController.dispose();
+    _converterController.dispose();
     super.dispose();
+  }
+
+  Widget _buildCurrentScreen() {
+    switch (_selectedIndex) {
+      case 0:
+        return BasicCalculatorScreen(key: _basicKey);
+      case 1:
+        return ScientificCalculatorScreen(key: _scientificKey);
+      case _mathNotesIndex:
+        return _mathNotesScreen;
+      case _converterIndex:
+        if (_lastCalcIndex == 1) {
+          return ScientificCalculatorScreen(
+            key: _scientificKey,
+            showConverter: true,
+            converterController: _converterController,
+          );
+        }
+        return BasicCalculatorScreen(
+          key: _basicKey,
+          showConverter: true,
+          converterController: _converterController,
+        );
+      default:
+        return const SizedBox.shrink();
+    }
   }
 
   void _onItemTapped(int index) {
     setState(() {
       _selectedIndex = index;
+      if (index == 0 || index == 1) {
+        _lastCalcIndex = index;
+      }
     });
   }
 
@@ -569,7 +599,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       ),
       body: SafeArea(
         top: false,
-        child: _screens[_selectedIndex],
+        child: _buildCurrentScreen(),
       ),
     );
   }

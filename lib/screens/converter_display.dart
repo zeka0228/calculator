@@ -2,25 +2,26 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import '../data/converter_controller.dart';
 import '../data/converter_data.dart';
 import '../data/currency_repository.dart';
-import '../widgets/calculator_button.dart';
+import '../logic/memo_math_eval.dart';
 
-class ConverterScreen extends StatefulWidget {
-  const ConverterScreen({super.key});
+class ConverterDisplay extends StatefulWidget {
+  final String sourceText;
+  final ConverterController controller;
+
+  const ConverterDisplay({
+    super.key,
+    required this.sourceText,
+    required this.controller,
+  });
 
   @override
-  State<ConverterScreen> createState() => _ConverterScreenState();
+  State<ConverterDisplay> createState() => _ConverterDisplayState();
 }
 
-class _ConverterScreenState extends State<ConverterScreen> {
-  ConverterCategory _category = ConverterCategory.length;
-  int _sourceUnitIndex = 0;
-  int _targetUnitIndex = 1;
-  String _sourceText = '0';
-  bool _resultDisplayed = false;
-  bool _editingSource = true;
-
+class _ConverterDisplayState extends State<ConverterDisplay> {
   static const List<String> _currencyOrder = [
     'USD',
     'KRW',
@@ -47,22 +48,25 @@ class _ConverterScreenState extends State<ConverterScreen> {
   @override
   void initState() {
     super.initState();
-    CurrencyRepository.instance.addListener(_onCurrencyChanged);
+    widget.controller.addListener(_onChanged);
+    CurrencyRepository.instance.addListener(_onChanged);
     unawaited(CurrencyRepository.instance.ensureFresh());
   }
 
   @override
   void dispose() {
-    CurrencyRepository.instance.removeListener(_onCurrencyChanged);
+    widget.controller.removeListener(_onChanged);
+    CurrencyRepository.instance.removeListener(_onChanged);
     super.dispose();
   }
 
-  void _onCurrencyChanged() {
+  void _onChanged() {
     if (mounted) setState(() {});
   }
 
-  List<ConverterUnit> get _units {
-    if (_category == ConverterCategory.currency) {
+  List<ConverterUnit> _units() {
+    final cat = widget.controller.category;
+    if (cat == ConverterCategory.currency) {
       final rates = CurrencyRepository.instance.rates;
       if (rates == null) return const [];
       final available = _currencyOrder
@@ -73,114 +77,16 @@ class _ConverterScreenState extends State<ConverterScreen> {
           ConverterUnit(code, _CurrencyConverter(code, rates)),
       ];
     }
-    return categoryUnits[_category] ?? const [];
+    return categoryUnits[cat] ?? const [];
   }
 
-  void _setCategory(ConverterCategory cat) {
-    setState(() {
-      _category = cat;
-      _sourceUnitIndex = 0;
-      _targetUnitIndex = _units.length > 1 ? 1 : 0;
-      _sourceText = '0';
-      _resultDisplayed = false;
-      _editingSource = true;
-    });
-  }
-
-  void _cycleUnit({required bool isSource, required int delta}) {
-    final units = _units;
-    if (units.isEmpty) return;
-    setState(() {
-      if (isSource) {
-        _sourceUnitIndex =
-            (_sourceUnitIndex + delta) % units.length;
-        if (_sourceUnitIndex < 0) _sourceUnitIndex += units.length;
-      } else {
-        _targetUnitIndex =
-            (_targetUnitIndex + delta) % units.length;
-        if (_targetUnitIndex < 0) _targetUnitIndex += units.length;
-      }
-    });
-  }
-
-  void _onKey(String key) {
-    setState(() {
-      if (key == 'AC') {
-        _sourceText = '0';
-        _resultDisplayed = false;
-        return;
-      }
-      if (key == '⌫') {
-        if (_resultDisplayed) {
-          _sourceText = '0';
-          _resultDisplayed = false;
-          return;
-        }
-        if (_sourceText.length <= 1 ||
-            (_sourceText.length == 2 && _sourceText.startsWith('-'))) {
-          _sourceText = '0';
-        } else {
-          _sourceText = _sourceText.substring(0, _sourceText.length - 1);
-        }
-        return;
-      }
-      if (key == '+/-') {
-        if (_sourceText == '0') return;
-        _sourceText = _sourceText.startsWith('-')
-            ? _sourceText.substring(1)
-            : '-$_sourceText';
-        return;
-      }
-      if (key == '⇄') {
-        final tmp = _sourceUnitIndex;
-        _sourceUnitIndex = _targetUnitIndex;
-        _targetUnitIndex = tmp;
-        if (_editingSource) {
-          final converted = _convertedValue();
-          _sourceText = _formatNumber(converted);
-          _resultDisplayed = false;
-        }
-        return;
-      }
-      if (key == '.') {
-        if (_resultDisplayed) {
-          _sourceText = '0.';
-          _resultDisplayed = false;
-          return;
-        }
-        if (!_sourceText.contains('.')) {
-          _sourceText = '$_sourceText.';
-        }
-        return;
-      }
-      if (key == '00') {
-        if (_sourceText == '0' || _resultDisplayed) {
-          _sourceText = '0';
-          _resultDisplayed = false;
-        } else {
-          _sourceText = '${_sourceText}00';
-        }
-        return;
-      }
-      // digit
-      if (_sourceText == '0' || _resultDisplayed) {
-        _sourceText = key;
-        _resultDisplayed = false;
-      } else {
-        _sourceText = '$_sourceText$key';
-      }
-    });
-  }
-
-  double get _sourceValue => double.tryParse(_sourceText) ?? 0;
-
-  double _convertedValue() {
-    final units = _units;
-    if (units.isEmpty) return 0;
-    final src = units[_sourceUnitIndex.clamp(0, units.length - 1)];
-    final tgt = units[_targetUnitIndex.clamp(0, units.length - 1)];
-    final base = src.converter.toBase(_sourceValue);
-    return tgt.converter.fromBase(base);
+  double _parseSource() {
+    final text = widget.sourceText;
+    final n = double.tryParse(text.replaceAll(',', ''));
+    if (n != null) return n;
+    final res = evaluateMemoExpression(text);
+    if (res != null) return double.tryParse(res) ?? 0;
+    return 0;
   }
 
   String _formatNumber(double v) {
@@ -194,42 +100,74 @@ class _ConverterScreenState extends State<ConverterScreen> {
     return s;
   }
 
+  String _formatRateTime(DateTime t) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${t.year}.${two(t.month)}.${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
+  }
+
+  ({String sourceDisplay, String targetDisplay}) _computeDisplay(
+      List<ConverterUnit> units) {
+    final c = widget.controller;
+    final src = units[c.sourceUnitIndex.clamp(0, units.length - 1)];
+    final tgt = units[c.targetUnitIndex.clamp(0, units.length - 1)];
+    final input = _parseSource();
+    if (c.editingSource) {
+      final base = src.converter.toBase(input);
+      final converted = tgt.converter.fromBase(base);
+      return (
+        sourceDisplay: widget.sourceText,
+        targetDisplay: _formatNumber(converted),
+      );
+    } else {
+      final base = tgt.converter.toBase(input);
+      final converted = src.converter.fromBase(base);
+      return (
+        sourceDisplay: _formatNumber(converted),
+        targetDisplay: widget.sourceText,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final units = _units;
-    final isCurrencyLoading = _category == ConverterCategory.currency &&
-        CurrencyRepository.instance.loading &&
-        CurrencyRepository.instance.rates == null;
-    final isCurrencyError = _category == ConverterCategory.currency &&
-        CurrencyRepository.instance.rates == null &&
-        !CurrencyRepository.instance.loading;
+    final units = _units();
+    final controller = widget.controller;
+    final isCurrencyLoading =
+        controller.category == ConverterCategory.currency &&
+            CurrencyRepository.instance.loading &&
+            CurrencyRepository.instance.rates == null;
+    final isCurrencyError =
+        controller.category == ConverterCategory.currency &&
+            CurrencyRepository.instance.rates == null &&
+            !CurrencyRepository.instance.loading;
 
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         SizedBox(
-          height: 44,
+          height: 36,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 8),
             itemCount: ConverterCategory.values.length,
-            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            separatorBuilder: (_, _) => const SizedBox(width: 6),
             itemBuilder: (context, i) {
               final cat = ConverterCategory.values[i];
-              final selected = cat == _category;
+              final selected = cat == controller.category;
               return GestureDetector(
-                onTap: () => _setCategory(cat),
+                onTap: () => controller.setCategory(cat),
                 child: Container(
                   alignment: Alignment.center,
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
                   decoration: BoxDecoration(
                     color: selected ? Colors.orange : Colors.grey[850],
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(18),
                   ),
                   child: Text(
                     categoryLabels[cat]!,
                     style: TextStyle(
                       color: selected ? Colors.white : Colors.grey[300],
-                      fontSize: 14,
+                      fontSize: 13,
                       fontWeight:
                           selected ? FontWeight.w600 : FontWeight.w400,
                     ),
@@ -240,26 +178,21 @@ class _ConverterScreenState extends State<ConverterScreen> {
           ),
         ),
         Expanded(
-          child: Container(
+          child: Padding(
             padding:
-                const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
             child: isCurrencyLoading
                 ? const Center(
-                    child:
-                        CircularProgressIndicator(color: Colors.orange),
-                  )
+                    child: CircularProgressIndicator(color: Colors.orange))
                 : isCurrencyError
                     ? _buildCurrencyError()
                     : units.isEmpty
                         ? const Center(
                             child: Text('단위가 없습니다',
-                                style: TextStyle(color: Colors.grey)),
-                          )
+                                style: TextStyle(color: Colors.grey)))
                         : _buildRows(units),
           ),
         ),
-        _buildKeypad(),
-        const SizedBox(height: 16),
       ],
     );
   }
@@ -277,10 +210,8 @@ class _ConverterScreenState extends State<ConverterScreen> {
           TextButton(
             onPressed: () =>
                 unawaited(CurrencyRepository.instance.refresh()),
-            child: const Text(
-              '다시 시도',
-              style: TextStyle(color: Colors.orange),
-            ),
+            child: const Text('다시 시도',
+                style: TextStyle(color: Colors.orange)),
           ),
         ],
       ),
@@ -288,12 +219,13 @@ class _ConverterScreenState extends State<ConverterScreen> {
   }
 
   Widget _buildRows(List<ConverterUnit> units) {
-    final converted = _convertedValue();
+    final controller = widget.controller;
+    final display = _computeDisplay(units);
     return Column(
       mainAxisAlignment: MainAxisAlignment.end,
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_category == ConverterCategory.currency &&
+        if (controller.category == ConverterCategory.currency &&
             CurrencyRepository.instance.rates != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 8),
@@ -324,29 +256,32 @@ class _ConverterScreenState extends State<ConverterScreen> {
             ),
           ),
         _buildValueRow(
-          value: _sourceText,
-          unit: units[_sourceUnitIndex.clamp(0, units.length - 1)].label,
-          isActive: _editingSource,
-          onTap: () => setState(() => _editingSource = true),
-          onUp: () => _cycleUnit(isSource: true, delta: 1),
-          onDown: () => _cycleUnit(isSource: true, delta: -1),
+          value: display.sourceDisplay,
+          unit: units[controller.sourceUnitIndex
+                  .clamp(0, units.length - 1)]
+              .label,
+          isActive: controller.editingSource,
+          onTap: () => controller.setEditingSource(true),
+          onUp: () => controller.cycleUnit(
+              isSource: true, delta: 1, total: units.length),
+          onDown: () => controller.cycleUnit(
+              isSource: true, delta: -1, total: units.length),
         ),
         const SizedBox(height: 12),
         _buildValueRow(
-          value: _formatNumber(converted),
-          unit: units[_targetUnitIndex.clamp(0, units.length - 1)].label,
-          isActive: !_editingSource,
-          onTap: () => setState(() => _editingSource = false),
-          onUp: () => _cycleUnit(isSource: false, delta: 1),
-          onDown: () => _cycleUnit(isSource: false, delta: -1),
+          value: display.targetDisplay,
+          unit: units[controller.targetUnitIndex
+                  .clamp(0, units.length - 1)]
+              .label,
+          isActive: !controller.editingSource,
+          onTap: () => controller.setEditingSource(false),
+          onUp: () => controller.cycleUnit(
+              isSource: false, delta: 1, total: units.length),
+          onDown: () => controller.cycleUnit(
+              isSource: false, delta: -1, total: units.length),
         ),
       ],
     );
-  }
-
-  String _formatRateTime(DateTime t) {
-    String two(int n) => n.toString().padLeft(2, '0');
-    return '${t.year}.${two(t.month)}.${two(t.day)} ${two(t.hour)}:${two(t.minute)}';
   }
 
   Widget _buildValueRow({
@@ -380,7 +315,7 @@ class _ConverterScreenState extends State<ConverterScreen> {
                 child: Text(
                   value,
                   style: TextStyle(
-                    fontSize: value.length > 12 ? 36 : 48,
+                    fontSize: value.length > 12 ? 32 : 44,
                     fontWeight: FontWeight.w300,
                     color: Colors.white,
                   ),
@@ -427,54 +362,6 @@ class _ConverterScreenState extends State<ConverterScreen> {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _buildKeypad() {
-    Widget btn(String label, {Color? bg, Color? fg}) {
-      return CalculatorButton(
-        text: label,
-        bgColor: bg ?? Colors.grey[850]!,
-        textColor: fg ?? Colors.white,
-        onTap: () => _onKey(label),
-      );
-    }
-
-    return Column(
-      children: [
-        Row(
-          children: [
-            btn('AC', bg: Colors.grey[400], fg: Colors.black),
-            btn('+/-', bg: Colors.grey[400], fg: Colors.black),
-            btn('⇄', bg: Colors.grey[400], fg: Colors.black),
-            btn('⌫', bg: Colors.grey[600]),
-          ],
-        ),
-        Row(
-          children: [
-            btn('7'),
-            btn('8'),
-            btn('9'),
-            btn('.'),
-          ],
-        ),
-        Row(
-          children: [
-            btn('4'),
-            btn('5'),
-            btn('6'),
-            btn('0'),
-          ],
-        ),
-        Row(
-          children: [
-            btn('1'),
-            btn('2'),
-            btn('3'),
-            btn('00', bg: Colors.grey[850]),
-          ],
-        ),
-      ],
     );
   }
 }

@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
+import '../data/converter_controller.dart';
 import '../widgets/calculator_button.dart';
 import '../logic/calculator_base.dart';
+import 'converter_display.dart';
 
 class BasicCalculatorScreen extends StatefulWidget {
-  const BasicCalculatorScreen({super.key});
+  final bool showConverter;
+  final ConverterController? converterController;
+  const BasicCalculatorScreen({
+    super.key,
+    this.showConverter = false,
+    this.converterController,
+  });
 
   @override
   State<BasicCalculatorScreen> createState() => _BasicCalculatorScreenState();
@@ -46,41 +54,52 @@ class _BasicCalculatorScreenState extends State<BasicCalculatorScreen> with Calc
 
   @override
   Widget build(BuildContext context) {
+    final showConverter =
+        widget.showConverter && widget.converterController != null;
     return Column(
       children: [
         Expanded(
-          child: Container(
-            alignment: Alignment.bottomRight,
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.end,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                if (history.isNotEmpty)
-                  SingleChildScrollView(
-                    reverse: true,
-                    scrollDirection: Axis.horizontal,
-                    child: Text(
-                      history,
-                      style: const TextStyle(fontSize: 24, color: Colors.grey, fontWeight: FontWeight.w400),
-                    ),
-                  ),
-                const SizedBox(height: 8),
-                SingleChildScrollView(
-                  reverse: true,
-                  scrollDirection: Axis.horizontal,
-                  child: Text(
-                    expression,
-                    style: TextStyle(
-                      fontSize: expression.length > 10 ? 40 : 60,
-                      fontWeight: FontWeight.w300,
-                      color: Colors.white,
-                    ),
+          child: showConverter
+              ? ConverterDisplay(
+                  sourceText: expression,
+                  controller: widget.converterController!,
+                )
+              : Container(
+                  alignment: Alignment.bottomRight,
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: 24, vertical: 16),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (history.isNotEmpty)
+                        SingleChildScrollView(
+                          reverse: true,
+                          scrollDirection: Axis.horizontal,
+                          child: Text(
+                            history,
+                            style: const TextStyle(
+                                fontSize: 24,
+                                color: Colors.grey,
+                                fontWeight: FontWeight.w400),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                      SingleChildScrollView(
+                        reverse: true,
+                        scrollDirection: Axis.horizontal,
+                        child: Text(
+                          expression,
+                          style: TextStyle(
+                            fontSize: expression.length > 10 ? 40 : 60,
+                            fontWeight: FontWeight.w300,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-              ],
-            ),
-          ),
         ),
         Column(
           children: [
