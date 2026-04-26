@@ -252,24 +252,49 @@ class _ConverterDisplayState extends State<ConverterDisplay> {
             ),
           ),
         const Spacer(),
-        _buildValueRow(
-          value: display.sourceDisplay,
-          unit: units[controller.sourceUnitIndex
-                  .clamp(0, units.length - 1)]
-              .label,
-          isActive: controller.editingSource,
-          onTap: () => controller.setEditingSource(true),
-          onArrowsTap: () => unawaited(_showUnitPicker(true)),
-        ),
-        const SizedBox(height: 12),
-        _buildValueRow(
-          value: display.targetDisplay,
-          unit: units[controller.targetUnitIndex
-                  .clamp(0, units.length - 1)]
-              .label,
-          isActive: !controller.editingSource,
-          onTap: () => controller.setEditingSource(false),
-          onArrowsTap: () => unawaited(_showUnitPicker(false)),
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: controller.swap,
+              child: const Padding(
+                padding:
+                    EdgeInsets.only(right: 12, top: 8, bottom: 8),
+                child: Icon(
+                  Icons.swap_vert,
+                  color: Colors.orange,
+                  size: 32,
+                ),
+              ),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _buildValueRow(
+                    value: display.sourceDisplay,
+                    unit: units[controller.sourceUnitIndex
+                            .clamp(0, units.length - 1)]
+                        .label,
+                    isActive: controller.editingSource,
+                    onTap: () => controller.setEditingSource(true),
+                    onArrowsTap: () => unawaited(_showUnitPicker(true)),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildValueRow(
+                    value: display.targetDisplay,
+                    unit: units[controller.targetUnitIndex
+                            .clamp(0, units.length - 1)]
+                        .label,
+                    isActive: !controller.editingSource,
+                    onTap: () => controller.setEditingSource(false),
+                    onArrowsTap: () => unawaited(_showUnitPicker(false)),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ],
     );

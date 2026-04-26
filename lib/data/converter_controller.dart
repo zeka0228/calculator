@@ -47,6 +47,14 @@ class ConverterController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void swap() {
+    final tmp = _sourceUnitIndex;
+    _sourceUnitIndex = _targetUnitIndex;
+    _targetUnitIndex = tmp;
+    _editingSource = !_editingSource;
+    notifyListeners();
+  }
+
   void setEditingSource(bool source) {
     if (_editingSource == source) return;
     _editingSource = source;
