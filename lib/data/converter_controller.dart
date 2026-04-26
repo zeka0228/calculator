@@ -36,6 +36,17 @@ class ConverterController extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setUnitIndex({required bool isSource, required int index}) {
+    if (isSource) {
+      if (_sourceUnitIndex == index) return;
+      _sourceUnitIndex = index;
+    } else {
+      if (_targetUnitIndex == index) return;
+      _targetUnitIndex = index;
+    }
+    notifyListeners();
+  }
+
   void setEditingSource(bool source) {
     if (_editingSource == source) return;
     _editingSource = source;
