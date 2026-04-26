@@ -17,7 +17,7 @@ enum MathNotesSortOrder {
 class MathNotesController extends ChangeNotifier {
   final List<MathNote> _notes = [];
   MathNotesSortOrder _sortOrder = MathNotesSortOrder.dateModifiedDesc;
-  bool _groupByDate = false;
+  bool _groupByDate = true;
   bool _selectionMode = false;
   final Set<int> _selected = {};
   bool _loaded = false;
@@ -253,8 +253,7 @@ class MathNotesScreen extends StatelessWidget {
                               isFirst: index == 0);
                         }
                         final note = (row as _ItemRow).note;
-                        final showTopDivider =
-                            index > 0 && rows[index - 1] is _ItemRow;
+                        final showTopDivider = index > 0;
                         return Column(
                           children: [
                             if (showTopDivider)
@@ -355,7 +354,7 @@ class MathNotesScreen extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        _formatDateTime(note.createdAt),
+                        _formatDateTime(note.updatedAt),
                         style: subtitleStyle,
                       ),
                       const SizedBox(width: 8),
@@ -380,9 +379,11 @@ class MathNotesScreen extends StatelessWidget {
 
   static String _firstLine(String content) {
     if (content.isEmpty) return '';
-    final newlineIdx = content.indexOf('\n');
-    final line = newlineIdx == -1 ? content : content.substring(0, newlineIdx);
-    return line.trim();
+    for (final line in content.split('\n')) {
+      final trimmed = line.trim();
+      if (trimmed.isNotEmpty) return trimmed;
+    }
+    return '';
   }
 
   static String _formatDateTime(DateTime dt) {
