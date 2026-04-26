@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import '../widgets/calc_mode_icon.dart';
@@ -6,7 +7,73 @@ import 'math_notes_screen.dart';
 enum NoteBackground { dark, light }
 enum FormulaResultMode { insert, suggest, off }
 enum AttachmentSizeMode { small, large }
-enum LinesGridMode { none, lines, grid }
+enum LinesGridMode { none, lines, wavyLines, grid, dotGrid }
+
+class _LinesGridPainter extends CustomPainter {
+  final LinesGridMode mode;
+  final Color color;
+  final double spacing;
+
+  _LinesGridPainter({
+    required this.mode,
+    required this.color,
+    required this.spacing,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (mode == LinesGridMode.none) return;
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 1
+      ..style = PaintingStyle.stroke;
+
+    switch (mode) {
+      case LinesGridMode.none:
+        return;
+      case LinesGridMode.lines:
+        for (double y = spacing; y < size.height; y += spacing) {
+          canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+        }
+        break;
+      case LinesGridMode.wavyLines:
+        final waveLen = spacing * 0.7;
+        final amp = spacing * 0.12;
+        for (double y = spacing; y < size.height; y += spacing) {
+          final path = Path()..moveTo(0, y);
+          for (double x = 0; x <= size.width; x += 2) {
+            final yOff = math.sin(x / waveLen * 2 * math.pi) * amp;
+            path.lineTo(x, y + yOff);
+          }
+          canvas.drawPath(path, paint);
+        }
+        break;
+      case LinesGridMode.grid:
+        for (double y = spacing; y < size.height; y += spacing) {
+          canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
+        }
+        for (double x = spacing; x < size.width; x += spacing) {
+          canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
+        }
+        break;
+      case LinesGridMode.dotGrid:
+        final dotPaint = Paint()
+          ..color = color
+          ..style = PaintingStyle.fill;
+        final dotR = math.max(1.0, spacing * 0.06);
+        for (double y = spacing; y < size.height; y += spacing) {
+          for (double x = spacing; x < size.width; x += spacing) {
+            canvas.drawCircle(Offset(x, y), dotR, dotPaint);
+          }
+        }
+        break;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _LinesGridPainter old) =>
+      old.mode != mode || old.color != color || old.spacing != spacing;
+}
 
 class NewMathNoteScreen extends StatefulWidget {
   final MathNotesController controller;
@@ -202,32 +269,69 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   }
 
   Future<void> _showLinesGridPicker() async {
-    final result = await showCupertinoModalPopup<LinesGridMode>(
+    const options = <(LinesGridMode, String)>[
+      (LinesGridMode.none, '없음'),
+      (LinesGridMode.lines, '직선 줄'),
+      (LinesGridMode.wavyLines, '구불 줄'),
+      (LinesGridMode.grid, '격자'),
+      (LinesGridMode.dotGrid, '점 격자'),
+    ];
+
+    final result = await showModalBottomSheet<LinesGridMode>(
       context: context,
-      builder: (context) => CupertinoActionSheet(
-        title: const Text('줄 및 격자'),
-        actions: [
-          CupertinoActionSheetAction(
-            isDefaultAction: _linesGrid == LinesGridMode.none,
-            onPressed: () => Navigator.pop(context, LinesGridMode.none),
-            child: const Text('없음'),
-          ),
-          CupertinoActionSheetAction(
-            isDefaultAction: _linesGrid == LinesGridMode.lines,
-            onPressed: () => Navigator.pop(context, LinesGridMode.lines),
-            child: const Text('줄'),
-          ),
-          CupertinoActionSheetAction(
-            isDefaultAction: _linesGrid == LinesGridMode.grid,
-            onPressed: () => Navigator.pop(context, LinesGridMode.grid),
-            child: const Text('격자'),
-          ),
-        ],
-        cancelButton: CupertinoActionSheetAction(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('취소'),
-        ),
+      backgroundColor: Colors.grey[900],
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
       ),
+      builder: (ctx) {
+        return SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[700],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                ),
+                const Padding(
+                  padding: EdgeInsets.fromLTRB(8, 12, 8, 16),
+                  child: Text(
+                    '줄 및 격자',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                Wrap(
+                  spacing: 14,
+                  runSpacing: 14,
+                  children: [
+                    for (final (mode, label) in options)
+                      _PatternTile(
+                        mode: mode,
+                        label: label,
+                        selected: _linesGrid == mode,
+                        isLight: _isLight,
+                        onTap: () => Navigator.of(ctx).pop(mode),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
     if (result != null && mounted) {
       setState(() => _linesGrid = result);
@@ -543,23 +647,104 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
         top: false,
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: TextField(
-            controller: _textController,
-            undoController: _undoController,
-            focusNode: _focusNode,
-            autofocus: true,
-            maxLines: null,
-            expands: true,
-            textAlignVertical: TextAlignVertical.top,
-            cursorColor: Colors.orange,
-            style: TextStyle(color: _fgColor, fontSize: 16),
-            decoration: InputDecoration(
-              border: InputBorder.none,
-              hintText: '제목과 내용을 입력하세요',
-              hintStyle: TextStyle(color: _hintColor, fontSize: 16),
-            ),
+          child: Stack(
+            children: [
+              if (_linesGrid != LinesGridMode.none)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: CustomPaint(
+                      painter: _LinesGridPainter(
+                        mode: _linesGrid,
+                        color: _isLight
+                            ? Colors.grey.shade300
+                            : Colors.grey.shade800,
+                        spacing: 24,
+                      ),
+                    ),
+                  ),
+                ),
+              TextField(
+                controller: _textController,
+                undoController: _undoController,
+                focusNode: _focusNode,
+                autofocus: true,
+                maxLines: null,
+                expands: true,
+                textAlignVertical: TextAlignVertical.top,
+                cursorColor: Colors.orange,
+                style: TextStyle(color: _fgColor, fontSize: 16, height: 1.5),
+                decoration: InputDecoration(
+                  border: InputBorder.none,
+                  isCollapsed: true,
+                  contentPadding: EdgeInsets.zero,
+                  hintText: '제목과 내용을 입력하세요',
+                  hintStyle: TextStyle(color: _hintColor, fontSize: 16),
+                ),
+              ),
+            ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _PatternTile extends StatelessWidget {
+  final LinesGridMode mode;
+  final String label;
+  final bool selected;
+  final bool isLight;
+  final VoidCallback onTap;
+
+  const _PatternTile({
+    required this.mode,
+    required this.label,
+    required this.selected,
+    required this.isLight,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 88,
+            height: 110,
+            decoration: BoxDecoration(
+              color: isLight ? Colors.white : Colors.black,
+              border: Border.all(
+                color: selected ? Colors.orange : Colors.grey.shade700,
+                width: selected ? 2.5 : 1,
+              ),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: CustomPaint(
+                painter: _LinesGridPainter(
+                  mode: mode,
+                  color:
+                      isLight ? Colors.grey.shade400 : Colors.grey.shade600,
+                  spacing: 14,
+                ),
+                size: const Size(88, 110),
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            label,
+            style: TextStyle(
+              color: selected ? Colors.orange : Colors.white,
+              fontSize: 13,
+              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+            ),
+          ),
+        ],
       ),
     );
   }
