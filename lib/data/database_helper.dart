@@ -25,7 +25,7 @@ class DatabaseHelper {
     debugPrint('[db] opening: $path');
     final db = await openDatabase(
       path,
-      version: 2,
+      version: 4,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
     );
@@ -47,6 +47,7 @@ class DatabaseHelper {
       'CREATE INDEX idx_history_created_at ON history(created_at)',
     );
     await _createMathNotesTable(db);
+    await _createSettingsTable(db);
   }
 
   Future<void> _onUpgrade(
@@ -54,6 +55,19 @@ class DatabaseHelper {
     debugPrint('[db] onUpgrade $oldVersion → $newVersion');
     if (oldVersion < 2) {
       await _createMathNotesTable(db);
+    }
+    if (oldVersion < 3) {
+      await db.execute(
+        'ALTER TABLE math_notes ADD COLUMN pinned INTEGER NOT NULL DEFAULT 0',
+      );
+      debugPrint('[db] math_notes: added pinned column');
+    }
+    if (oldVersion < 4) {
+      await db.execute(
+        'ALTER TABLE math_notes ADD COLUMN lines_grid INTEGER NOT NULL DEFAULT 0',
+      );
+      debugPrint('[db] math_notes: added lines_grid column');
+      await _createSettingsTable(db);
     }
   }
 
@@ -64,13 +78,25 @@ class DatabaseHelper {
         title TEXT NOT NULL,
         content TEXT NOT NULL,
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        pinned INTEGER NOT NULL DEFAULT 0,
+        lines_grid INTEGER NOT NULL DEFAULT 0
       )
     ''');
     await db.execute(
       'CREATE INDEX idx_math_notes_updated_at ON math_notes(updated_at)',
     );
     debugPrint('[db] created math_notes table + index');
+  }
+
+  Future<void> _createSettingsTable(Database db) async {
+    await db.execute('''
+      CREATE TABLE settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+      )
+    ''');
+    debugPrint('[db] created settings table');
   }
 
   Future<void> close() async {

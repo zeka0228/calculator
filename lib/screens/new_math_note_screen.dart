@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -6,10 +7,8 @@ import '../logic/memo_math_eval.dart';
 import '../widgets/calc_mode_icon.dart';
 import 'math_notes_screen.dart';
 
-enum NoteBackground { dark, light }
 enum FormulaResultMode { insert, suggest, off }
 enum AttachmentSizeMode { small, large }
-enum LinesGridMode { none, lines, wavyLines, grid, dotGrid }
 
 class _LinesGridPainter extends CustomPainter {
   final LinesGridMode mode;
@@ -109,7 +108,6 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   int _currentMatchIndex = 0;
 
   bool _pinned = false;
-  NoteBackground _background = NoteBackground.dark;
   FormulaResultMode _formulaResult = FormulaResultMode.insert;
   AttachmentSizeMode _attachmentSize = AttachmentSizeMode.small;
   LinesGridMode _linesGrid = LinesGridMode.none;
@@ -128,6 +126,8 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     super.initState();
     final existing = widget.existingNote;
     if (existing != null) {
+      _pinned = existing.pinned;
+      _linesGrid = existing.linesGrid;
       final initialText = existing.content.isEmpty
           ? existing.title
           : '${existing.title}\n${existing.content}';
@@ -138,6 +138,11 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     }
     _lastText = _textController.text;
     _textController.addListener(_onTextChanged);
+    widget.controller.addListener(_onControllerChanged);
+  }
+
+  void _onControllerChanged() {
+    if (mounted) setState(() {});
   }
 
   @override
@@ -148,6 +153,7 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     _focusNode.dispose();
     _findController.dispose();
     _findFocusNode.dispose();
+    widget.controller.removeListener(_onControllerChanged);
     super.dispose();
   }
 
@@ -400,7 +406,7 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   }
 
   bool get _isEmpty => _textController.text.trim().isEmpty;
-  bool get _isLight => _background == NoteBackground.light;
+  bool get _isLight => widget.controller.isLightBackground;
   Color get _bgColor => _isLight ? Colors.white : Colors.black;
   Color get _fgColor => _isLight ? Colors.black : Colors.white;
   Color get _hintColor =>
@@ -425,6 +431,8 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
       await widget.controller.addNote(
         title: title,
         content: body,
+        pinned: _pinned,
+        linesGrid: _linesGrid,
       );
     }
   }
@@ -473,6 +481,11 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     switch (value) {
       case 'pin':
         setState(() => _pinned = !_pinned);
+        final existing = widget.existingNote;
+        if (existing != null) {
+          unawaited(
+              widget.controller.setPinned(existing.id, _pinned));
+        }
         break;
       case 'find_in_note':
         _enterFindMode();
@@ -491,9 +504,7 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
         await _showAttachmentSizePicker();
         break;
       case 'background':
-        setState(() {
-          _background = _isLight ? NoteBackground.dark : NoteBackground.light;
-        });
+        await widget.controller.setLightBackground(!_isLight);
         break;
       case 'delete':
         await _discardAndExit();
@@ -604,6 +615,10 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     );
     if (result != null && mounted) {
       setState(() => _linesGrid = result);
+      final existing = widget.existingNote;
+      if (existing != null) {
+        unawaited(widget.controller.setLinesGrid(existing.id, result));
+      }
     }
   }
 

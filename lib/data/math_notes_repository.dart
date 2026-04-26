@@ -1,12 +1,16 @@
 import 'package:flutter/foundation.dart';
 import 'database_helper.dart';
 
+enum LinesGridMode { none, lines, wavyLines, grid, dotGrid }
+
 class MathNote {
   final int id;
   final String title;
   final String content;
   final DateTime createdAt;
   final DateTime updatedAt;
+  final bool pinned;
+  final LinesGridMode linesGrid;
 
   const MathNote({
     required this.id,
@@ -14,6 +18,8 @@ class MathNote {
     required this.content,
     required this.createdAt,
     required this.updatedAt,
+    this.pinned = false,
+    this.linesGrid = LinesGridMode.none,
   });
 
   Map<String, Object?> toMap() => {
@@ -22,17 +28,27 @@ class MathNote {
         'content': content,
         'created_at': createdAt.millisecondsSinceEpoch,
         'updated_at': updatedAt.millisecondsSinceEpoch,
+        'pinned': pinned ? 1 : 0,
+        'lines_grid': linesGrid.index,
       };
 
-  factory MathNote.fromMap(Map<String, Object?> map) => MathNote(
-        id: map['id'] as int,
-        title: map['title'] as String,
-        content: map['content'] as String,
-        createdAt:
-            DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
-        updatedAt:
-            DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
-      );
+  factory MathNote.fromMap(Map<String, Object?> map) {
+    final lgIdx = (map['lines_grid'] as int?) ?? 0;
+    final lg = lgIdx >= 0 && lgIdx < LinesGridMode.values.length
+        ? LinesGridMode.values[lgIdx]
+        : LinesGridMode.none;
+    return MathNote(
+      id: map['id'] as int,
+      title: map['title'] as String,
+      content: map['content'] as String,
+      createdAt:
+          DateTime.fromMillisecondsSinceEpoch(map['created_at'] as int),
+      updatedAt:
+          DateTime.fromMillisecondsSinceEpoch(map['updated_at'] as int),
+      pinned: ((map['pinned'] as int?) ?? 0) != 0,
+      linesGrid: lg,
+    );
+  }
 }
 
 class MathNotesRepository {
@@ -46,6 +62,8 @@ class MathNotesRepository {
     required String content,
     required DateTime createdAt,
     required DateTime updatedAt,
+    bool pinned = false,
+    LinesGridMode linesGrid = LinesGridMode.none,
   }) async {
     final db = await DatabaseHelper.instance.database;
     final id = await db.insert(_table, {
@@ -53,8 +71,11 @@ class MathNotesRepository {
       'content': content,
       'created_at': createdAt.millisecondsSinceEpoch,
       'updated_at': updatedAt.millisecondsSinceEpoch,
+      'pinned': pinned ? 1 : 0,
+      'lines_grid': linesGrid.index,
     });
-    debugPrint('[math-notes] db insert id=$id');
+    debugPrint(
+        '[math-notes] db insert id=$id pinned=$pinned linesGrid=${linesGrid.name}');
     return id;
   }
 

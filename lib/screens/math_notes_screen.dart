@@ -1,10 +1,11 @@
 import 'dart:math' as math;
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import '../data/app_settings.dart';
 import '../data/math_notes_repository.dart';
 import 'new_math_note_screen.dart';
 
-export '../data/math_notes_repository.dart' show MathNote;
+export '../data/math_notes_repository.dart' show MathNote, LinesGridMode;
 
 enum MathNotesSortOrder { dateModified, dateCreated, title }
 
@@ -15,6 +16,9 @@ class MathNotesController extends ChangeNotifier {
   bool _selectionMode = false;
   final Set<int> _selected = {};
   bool _loaded = false;
+  bool _isLightBackground = false;
+
+  static const String _kBackgroundKey = 'math_notes_background';
 
   List<MathNote> get notes => List.unmodifiable(_notes);
   int get count => _notes.length;
@@ -23,6 +27,7 @@ class MathNotesController extends ChangeNotifier {
   bool get selectionMode => _selectionMode;
   Set<int> get selected => Set.unmodifiable(_selected);
   bool get isLoaded => _loaded;
+  bool get isLightBackground => _isLightBackground;
 
   Future<void> load() async {
     final loaded = await MathNotesRepository.instance.getAll();
@@ -30,8 +35,19 @@ class MathNotesController extends ChangeNotifier {
       ..clear()
       ..addAll(loaded);
     _applySort();
+    final bgPref = await AppSettings.instance.get(_kBackgroundKey);
+    _isLightBackground = bgPref == 'light';
     _loaded = true;
-    debugPrint('[math-notes] loaded ${loaded.length} note(s) from DB');
+    debugPrint(
+        '[math-notes] loaded ${loaded.length} note(s) from DB, bg=$bgPref');
+    notifyListeners();
+  }
+
+  Future<void> setLightBackground(bool light) async {
+    if (_isLightBackground == light) return;
+    _isLightBackground = light;
+    await AppSettings.instance
+        .set(_kBackgroundKey, light ? 'light' : 'dark');
     notifyListeners();
   }
 
@@ -39,6 +55,8 @@ class MathNotesController extends ChangeNotifier {
     required String title,
     required String content,
     DateTime? createdAt,
+    bool pinned = false,
+    LinesGridMode linesGrid = LinesGridMode.none,
   }) async {
     final now = createdAt ?? DateTime.now();
     final id = await MathNotesRepository.instance.insert(
@@ -46,6 +64,8 @@ class MathNotesController extends ChangeNotifier {
       content: content,
       createdAt: now,
       updatedAt: now,
+      pinned: pinned,
+      linesGrid: linesGrid,
     );
     _notes.add(MathNote(
       id: id,
@@ -53,10 +73,12 @@ class MathNotesController extends ChangeNotifier {
       content: content,
       createdAt: now,
       updatedAt: now,
+      pinned: pinned,
+      linesGrid: linesGrid,
     ));
     _applySort();
     debugPrint(
-        '[math-notes] created id=$id title="$title" chars=${content.length}');
+        '[math-notes] created id=$id title="$title" chars=${content.length} pinned=$pinned linesGrid=${linesGrid.name}');
     notifyListeners();
     return id;
   }
@@ -95,12 +117,62 @@ class MathNotesController extends ChangeNotifier {
       content: content,
       createdAt: old.createdAt,
       updatedAt: DateTime.now(),
+      pinned: old.pinned,
+      linesGrid: old.linesGrid,
     );
     await MathNotesRepository.instance.update(updated);
     _notes[index] = updated;
     _applySort();
     debugPrint(
         '[math-notes] updated id=$id title="$title" chars=${content.length}');
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> setLinesGrid(int id, LinesGridMode mode) async {
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index == -1) {
+      debugPrint('[math-notes] setLinesGrid SKIPPED (not found) id=$id');
+      return false;
+    }
+    final old = _notes[index];
+    if (old.linesGrid == mode) return false;
+    final updated = MathNote(
+      id: old.id,
+      title: old.title,
+      content: old.content,
+      createdAt: old.createdAt,
+      updatedAt: old.updatedAt,
+      pinned: old.pinned,
+      linesGrid: mode,
+    );
+    await MathNotesRepository.instance.update(updated);
+    _notes[index] = updated;
+    debugPrint('[math-notes] linesGrid id=$id → ${mode.name}');
+    notifyListeners();
+    return true;
+  }
+
+  Future<bool> setPinned(int id, bool pinned) async {
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index == -1) {
+      debugPrint('[math-notes] setPinned SKIPPED (not found) id=$id');
+      return false;
+    }
+    final old = _notes[index];
+    if (old.pinned == pinned) return false;
+    final updated = MathNote(
+      id: old.id,
+      title: old.title,
+      content: old.content,
+      createdAt: old.createdAt,
+      updatedAt: old.updatedAt,
+      pinned: pinned,
+      linesGrid: old.linesGrid,
+    );
+    await MathNotesRepository.instance.update(updated);
+    _notes[index] = updated;
+    debugPrint('[math-notes] pinned id=$id → $pinned');
     notifyListeners();
     return true;
   }
@@ -262,9 +334,7 @@ class MathNotesScreen extends StatelessWidget {
                       itemCount: rows.length,
                       itemBuilder: (context, index) {
                         final row = rows[index];
-                        final grouped = controller.groupByDate &&
-                            controller.sortOrder !=
-                                MathNotesSortOrder.title;
+                        final grouped = rows.any((r) => r is _HeaderRow);
                         if (row is _HeaderRow) {
                           return _buildGroupHeader(row.label,
                               isFirst: index == 0);
@@ -428,18 +498,25 @@ class MathNotesScreen extends StatelessWidget {
     bool grouped,
     MathNotesSortOrder sort,
   ) {
+    final pinned = notes.where((n) => n.pinned).toList();
+    final unpinned = notes.where((n) => !n.pinned).toList();
+    final rows = <_NoteRow>[];
+    if (pinned.isNotEmpty) {
+      rows.add(_HeaderRow('고정됨'));
+      rows.addAll(pinned.map(_ItemRow.new));
+    }
     if (!grouped || sort == MathNotesSortOrder.title) {
-      return [for (final n in notes) _ItemRow(n)];
+      rows.addAll(unpinned.map(_ItemRow.new));
+      return rows;
     }
     final useCreated = sort == MathNotesSortOrder.dateCreated;
     const order = ['오늘', '어제', '최근 7일', '최근 30일', '이전'];
     final groups = <String, List<MathNote>>{};
-    for (final n in notes) {
+    for (final n in unpinned) {
       final label =
           _groupLabelFor(useCreated ? n.createdAt : n.updatedAt);
       groups.putIfAbsent(label, () => []).add(n);
     }
-    final rows = <_NoteRow>[];
     for (final label in order) {
       final list = groups[label];
       if (list == null || list.isEmpty) continue;
