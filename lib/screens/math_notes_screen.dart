@@ -6,17 +6,11 @@ import 'new_math_note_screen.dart';
 
 export '../data/math_notes_repository.dart' show MathNote;
 
-enum MathNotesSortOrder {
-  dateModifiedDesc,
-  dateModifiedAsc,
-  dateCreatedDesc,
-  dateCreatedAsc,
-  titleAsc,
-}
+enum MathNotesSortOrder { dateModified, dateCreated, title }
 
 class MathNotesController extends ChangeNotifier {
   final List<MathNote> _notes = [];
-  MathNotesSortOrder _sortOrder = MathNotesSortOrder.dateModifiedDesc;
+  MathNotesSortOrder _sortOrder = MathNotesSortOrder.dateModified;
   bool _groupByDate = true;
   bool _selectionMode = false;
   final Set<int> _selected = {};
@@ -35,6 +29,7 @@ class MathNotesController extends ChangeNotifier {
     _notes
       ..clear()
       ..addAll(loaded);
+    _applySort();
     _loaded = true;
     debugPrint('[math-notes] loaded ${loaded.length} note(s) from DB');
     notifyListeners();
@@ -59,15 +54,25 @@ class MathNotesController extends ChangeNotifier {
       createdAt: now,
       updatedAt: now,
     ));
-    _sortByUpdatedDesc();
+    _applySort();
     debugPrint(
         '[math-notes] created id=$id title="$title" chars=${content.length}');
     notifyListeners();
     return id;
   }
 
-  void _sortByUpdatedDesc() {
-    _notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+  void _applySort() {
+    switch (_sortOrder) {
+      case MathNotesSortOrder.dateModified:
+        _notes.sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+        break;
+      case MathNotesSortOrder.dateCreated:
+        _notes.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        break;
+      case MathNotesSortOrder.title:
+        _notes.sort((a, b) => a.title.compareTo(b.title));
+        break;
+    }
   }
 
   Future<bool> updateNote({
@@ -93,7 +98,7 @@ class MathNotesController extends ChangeNotifier {
     );
     await MathNotesRepository.instance.update(updated);
     _notes[index] = updated;
-    _sortByUpdatedDesc();
+    _applySort();
     debugPrint(
         '[math-notes] updated id=$id title="$title" chars=${content.length}');
     notifyListeners();
@@ -185,10 +190,16 @@ class MathNotesController extends ChangeNotifier {
   void setSortOrder(MathNotesSortOrder order) {
     if (_sortOrder == order) return;
     _sortOrder = order;
+    if (order == MathNotesSortOrder.title) {
+      _groupByDate = false;
+    }
+    _applySort();
+    debugPrint('[math-notes] sortOrder=$order');
     notifyListeners();
   }
 
   void toggleGroupByDate() {
+    if (_sortOrder == MathNotesSortOrder.title) return;
     _groupByDate = !_groupByDate;
     notifyListeners();
   }
@@ -231,7 +242,11 @@ class MathNotesScreen extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller,
       builder: (context, _) {
-        final rows = _buildRows(controller.notes, controller.groupByDate);
+        final rows = _buildRows(
+          controller.notes,
+          controller.groupByDate,
+          controller.sortOrder,
+        );
         return Column(
           children: [
             Expanded(
@@ -247,7 +262,9 @@ class MathNotesScreen extends StatelessWidget {
                       itemCount: rows.length,
                       itemBuilder: (context, index) {
                         final row = rows[index];
-                        final grouped = controller.groupByDate;
+                        final grouped = controller.groupByDate &&
+                            controller.sortOrder !=
+                                MathNotesSortOrder.title;
                         if (row is _HeaderRow) {
                           return _buildGroupHeader(row.label,
                               isFirst: index == 0);
@@ -295,6 +312,9 @@ class MathNotesScreen extends StatelessWidget {
     final inSelectionMode = controller.selectionMode;
     final isSelected = controller.selected.contains(note.id);
     final preview = _firstLine(note.content);
+    final dateToShow = controller.sortOrder == MathNotesSortOrder.dateCreated
+        ? note.createdAt
+        : note.updatedAt;
     final subtitleStyle = TextStyle(
       color: Colors.grey[500],
       fontSize: 13,
@@ -354,7 +374,7 @@ class MathNotesScreen extends StatelessWidget {
                   Row(
                     children: [
                       Text(
-                        _formatDateTime(note.updatedAt),
+                        _formatDateTime(dateToShow),
                         style: subtitleStyle,
                       ),
                       const SizedBox(width: 8),
@@ -403,14 +423,20 @@ class MathNotesScreen extends StatelessWidget {
     return '이전';
   }
 
-  static List<_NoteRow> _buildRows(List<MathNote> notes, bool grouped) {
-    if (!grouped) {
+  static List<_NoteRow> _buildRows(
+    List<MathNote> notes,
+    bool grouped,
+    MathNotesSortOrder sort,
+  ) {
+    if (!grouped || sort == MathNotesSortOrder.title) {
       return [for (final n in notes) _ItemRow(n)];
     }
+    final useCreated = sort == MathNotesSortOrder.dateCreated;
     const order = ['오늘', '어제', '최근 7일', '최근 30일', '이전'];
     final groups = <String, List<MathNote>>{};
     for (final n in notes) {
-      final label = _groupLabelFor(n.updatedAt);
+      final label =
+          _groupLabelFor(useCreated ? n.createdAt : n.updatedAt);
       groups.putIfAbsent(label, () => []).add(n);
     }
     final rows = <_NoteRow>[];

@@ -43,6 +43,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
   int _selectedIndex = 0;
   late final MathNotesController _mathNotesController;
   late final List<Widget> _screens;
+  final GlobalKey _overflowKey = GlobalKey();
 
   static const int _mathNotesIndex = 2;
   static const int _converterIndex = 3;
@@ -243,6 +244,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
   Widget _buildMathNotesOverflowButton() {
     return Container(
+      key: _overflowKey,
       width: 80,
       height: 80,
       decoration: BoxDecoration(
@@ -268,6 +270,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               _mathNotesController.enterSelectionMode();
               break;
             case 'sort':
+              unawaited(_showSortSubMenu());
               break;
             case 'group':
               _mathNotesController.toggleGroupByDate();
@@ -275,6 +278,8 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           }
         },
         itemBuilder: (context) {
+          final isTitleSort = _mathNotesController.sortOrder ==
+              MathNotesSortOrder.title;
           return [
             const PopupMenuItem<String>(
               value: 'select',
@@ -292,47 +297,127 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
                 ],
               ),
             ),
-            const PopupMenuItem<String>(
-              value: 'sort',
-              child: Row(
-                children: [
-                  SizedBox(width: 24),
-                  SizedBox(width: 8),
-                  Icon(Icons.sort, size: 20, color: Colors.white),
-                  SizedBox(width: 12),
-                  Text(
-                    '다음으로 정렬',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
-                  ),
-                ],
-              ),
-            ),
             PopupMenuItem<String>(
-              value: 'group',
+              value: 'sort',
+              height: 56,
               child: Row(
                 children: [
-                  SizedBox(
-                    width: 24,
-                    child: _mathNotesController.groupByDate
-                        ? const Icon(Icons.check,
-                            size: 18, color: Colors.white)
-                        : null,
-                  ),
+                  const SizedBox(width: 24),
                   const SizedBox(width: 8),
-                  const Icon(Icons.calendar_today,
-                      size: 20, color: Colors.white),
+                  const Icon(Icons.sort, size: 20, color: Colors.white),
                   const SizedBox(width: 12),
-                  const Text(
-                    '날짜별로 그룹화',
-                    style: TextStyle(color: Colors.white, fontSize: 16),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text(
+                        '다음으로 정렬',
+                        style: TextStyle(
+                            color: Colors.white, fontSize: 16),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _sortLabel(_mathNotesController.sortOrder),
+                        style: TextStyle(
+                          color: Colors.grey[500],
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
+            if (!isTitleSort)
+              PopupMenuItem<String>(
+                value: 'group',
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 24,
+                      child: _mathNotesController.groupByDate
+                          ? const Icon(Icons.check,
+                              size: 18, color: Colors.white)
+                          : null,
+                    ),
+                    const SizedBox(width: 8),
+                    const Icon(Icons.calendar_today,
+                        size: 20, color: Colors.white),
+                    const SizedBox(width: 12),
+                    const Text(
+                      '날짜별로 그룹화',
+                      style: TextStyle(color: Colors.white, fontSize: 16),
+                    ),
+                  ],
+                ),
+              ),
           ];
         },
       ),
     );
+  }
+
+  static String _sortLabel(MathNotesSortOrder order) {
+    switch (order) {
+      case MathNotesSortOrder.dateModified:
+        return '편집일';
+      case MathNotesSortOrder.dateCreated:
+        return '생성일';
+      case MathNotesSortOrder.title:
+        return '제목';
+    }
+  }
+
+  Future<void> _showSortSubMenu() async {
+    final keyContext = _overflowKey.currentContext;
+    if (keyContext == null) return;
+    final RenderBox button = keyContext.findRenderObject() as RenderBox;
+    final RenderBox overlay =
+        Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(button.size.bottomLeft(Offset.zero),
+            ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero),
+            ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+    final current = _mathNotesController.sortOrder;
+    final result = await showMenu<MathNotesSortOrder>(
+      context: context,
+      position: position,
+      color: Colors.grey[900],
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+      ),
+      items: [
+        for (final option in MathNotesSortOrder.values)
+          PopupMenuItem<MathNotesSortOrder>(
+            value: option,
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 24,
+                  child: current == option
+                      ? const Icon(Icons.check,
+                          size: 18, color: Colors.white)
+                      : null,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _sortLabel(option),
+                  style:
+                      const TextStyle(color: Colors.white, fontSize: 16),
+                ),
+              ],
+            ),
+          ),
+      ],
+    );
+    if (result != null) {
+      _mathNotesController.setSortOrder(result);
+    }
   }
 
   Widget _buildMathNotesTitle() {
