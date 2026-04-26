@@ -61,6 +61,40 @@ class MathNotesController extends ChangeNotifier {
     return id;
   }
 
+  bool updateNote({
+    required int id,
+    required String title,
+    required String content,
+  }) {
+    final index = _notes.indexWhere((n) => n.id == id);
+    if (index == -1) {
+      debugPrint('[math-notes] update SKIPPED (not found) id=$id');
+      return false;
+    }
+    final old = _notes[index];
+    if (old.title == title && old.content == content) {
+      return false;
+    }
+    _notes[index] = MathNote(
+      id: old.id,
+      title: title,
+      content: content,
+      createdAt: old.createdAt,
+      updatedAt: DateTime.now(),
+    );
+    debugPrint(
+        '[math-notes] updated id=$id title="$title" chars=${content.length}');
+    notifyListeners();
+    return true;
+  }
+
+  MathNote? noteById(int id) {
+    for (final n in _notes) {
+      if (n.id == id) return n;
+    }
+    return null;
+  }
+
   void enterSelectionMode() {
     if (_selectionMode) return;
     _selectionMode = true;
@@ -116,6 +150,18 @@ class MathNotesScreen extends StatelessWidget {
     );
   }
 
+  void _onOpenNote(BuildContext context, MathNote note) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => NewMathNoteScreen(
+          controller: controller,
+          onSwitchMode: onSwitchMode,
+          existingNote: note,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AnimatedBuilder(
@@ -131,18 +177,29 @@ class MathNotesScreen extends StatelessWidget {
                         style: TextStyle(color: Colors.grey, fontSize: 18),
                       ),
                     )
-                  : ListView.builder(
+                  : ListView.separated(
                       padding: const EdgeInsets.symmetric(
-                          horizontal: 24, vertical: 12),
+                          horizontal: 16, vertical: 12),
                       itemCount: controller.notes.length,
+                      separatorBuilder: (_, _) =>
+                          Divider(color: Colors.grey[850], height: 1),
                       itemBuilder: (context, index) {
                         final note = controller.notes[index];
-                        return Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 8),
-                          child: Text(
-                            note.title,
-                            style: const TextStyle(
-                                color: Colors.white, fontSize: 16),
+                        return InkWell(
+                          onTap: () => _onOpenNote(context, note),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                vertical: 14, horizontal: 8),
+                            child: Text(
+                              note.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 17,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
                         );
                       },

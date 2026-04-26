@@ -11,11 +11,13 @@ enum LinesGridMode { none, lines, grid }
 class NewMathNoteScreen extends StatefulWidget {
   final MathNotesController controller;
   final ValueChanged<int>? onSwitchMode;
+  final MathNote? existingNote;
 
   const NewMathNoteScreen({
     super.key,
     required this.controller,
     this.onSwitchMode,
+    this.existingNote,
   });
 
   @override
@@ -45,6 +47,16 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   @override
   void initState() {
     super.initState();
+    final existing = widget.existingNote;
+    if (existing != null) {
+      final initialText = existing.content.isEmpty
+          ? existing.title
+          : '${existing.title}\n${existing.content}';
+      _textController.value = TextEditingValue(
+        text: initialText,
+        selection: TextSelection.collapsed(offset: initialText.length),
+      );
+    }
     _textController.addListener(_onTextChanged);
   }
 
@@ -70,16 +82,26 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
 
   void _saveCurrentNote() {
     final text = _textController.text;
-    if (text.trim().isEmpty) return;
+    final existing = widget.existingNote;
+    if (text.trim().isEmpty && existing == null) return;
     final firstNewline = text.indexOf('\n');
     final rawTitle =
         (firstNewline == -1 ? text : text.substring(0, firstNewline)).trim();
     final body = firstNewline == -1 ? '' : text.substring(firstNewline + 1);
-    widget.controller.addNote(
-      title: rawTitle.isEmpty ? '제목 없음' : rawTitle,
-      content: body,
-      createdAt: DateTime.now(),
-    );
+    final title = rawTitle.isEmpty ? '제목 없음' : rawTitle;
+    if (existing != null) {
+      widget.controller.updateNote(
+        id: existing.id,
+        title: title,
+        content: body,
+      );
+    } else {
+      widget.controller.addNote(
+        title: title,
+        content: body,
+        createdAt: DateTime.now(),
+      );
+    }
   }
 
   void _saveAndExit() {
@@ -97,6 +119,20 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     debugPrint(
         '[math-notes] draft discarded chars=${_textController.text.length}');
     Navigator.of(context).pop();
+  }
+
+  void _openOtherNote(MathNote target) {
+    if (widget.existingNote?.id == target.id) return;
+    _saveCurrentNote();
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => NewMathNoteScreen(
+          controller: widget.controller,
+          onSwitchMode: widget.onSwitchMode,
+          existingNote: target,
+        ),
+      ),
+    );
   }
 
   Future<void> _onMenuSelected(String value) async {
@@ -297,7 +333,10 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
                           n.title,
                           style: const TextStyle(color: Colors.white),
                         ),
-                        onTap: () => Navigator.of(ctx).pop(),
+                        onTap: () {
+                          Navigator.of(ctx).pop();
+                          _openOtherNote(n);
+                        },
                       );
                     },
                   ),
