@@ -100,10 +100,11 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   final FocusNode _focusNode = FocusNode();
   String _lastText = '';
   String? _activePreview;
+  bool _isSuggestActive = false;
 
   bool _pinned = false;
   NoteBackground _background = NoteBackground.dark;
-  FormulaResultMode _formulaResult = FormulaResultMode.off;
+  FormulaResultMode _formulaResult = FormulaResultMode.insert;
   AttachmentSizeMode _attachmentSize = AttachmentSizeMode.small;
   LinesGridMode _linesGrid = LinesGridMode.none;
 
@@ -160,19 +161,36 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
   }
 
   void _updatePreview() {
+    if (_formulaResult == FormulaResultMode.off) {
+      _activePreview = null;
+      _isSuggestActive = false;
+      _textController.setPreview(null);
+      return;
+    }
     final text = _textController.text;
     final cursor = _textController.selection.baseOffset;
     String? preview;
+    bool isSuggest = false;
     if (cursor >= 0 && cursor <= text.length) {
       final lineStart =
           cursor == 0 ? 0 : text.lastIndexOf('\n', cursor - 1) + 1;
       var lineEnd = text.indexOf('\n', cursor);
       if (lineEnd == -1) lineEnd = text.length;
       final currentLine = text.substring(lineStart, lineEnd);
-      preview = evaluateMemoExpression(currentLine);
+      if (_formulaResult == FormulaResultMode.suggest) {
+        final trimmed = currentLine.trimRight();
+        if (trimmed.endsWith('=')) {
+          final exprPart = trimmed.substring(0, trimmed.length - 1);
+          preview = evaluateMemoExpression(exprPart);
+          isSuggest = preview != null;
+        }
+      } else {
+        preview = evaluateMemoExpression(currentLine);
+      }
     }
     _activePreview = preview;
-    _textController.setPreview(preview);
+    _isSuggestActive = isSuggest;
+    _textController.setPreview(preview, isSuggest: isSuggest);
   }
 
   String _missingCloseParens(String text, int lineStart, int lineEnd) {
@@ -182,26 +200,61 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     return open > close ? ')' * (open - close) : '';
   }
 
+  ({int eqPos, String closing}) _suggestSlot(
+      String text, int lineStart, int lineEnd) {
+    int eqPos = lineEnd - 1;
+    while (eqPos >= lineStart &&
+        (text[eqPos] == ' ' || text[eqPos] == '\t')) {
+      eqPos--;
+    }
+    if (eqPos < lineStart || text[eqPos] != '=') {
+      return (eqPos: -1, closing: '');
+    }
+    final exprText = text.substring(lineStart, eqPos);
+    final open = '('.allMatches(exprText).length;
+    final close = ')'.allMatches(exprText).length;
+    final closing = open > close ? ')' * (open - close) : '';
+    return (eqPos: eqPos, closing: closing);
+  }
+
   void _acceptPreview({required int newlinePos}) {
     final preview = _activePreview;
     if (preview == null) return;
     final text = _textController.text;
     final lineStart =
         newlinePos == 0 ? 0 : text.lastIndexOf('\n', newlinePos - 1) + 1;
-    final closing = _missingCloseParens(text, lineStart, newlinePos);
-    final accepted = '$closing = $preview';
-    final newText = text.substring(0, newlinePos) +
-        accepted +
-        text.substring(newlinePos + 1);
-    final newCursor = newlinePos + accepted.length;
+    String newText;
+    int newCursor;
+    if (_isSuggestActive) {
+      final slot = _suggestSlot(text, lineStart, newlinePos);
+      if (slot.eqPos < 0) return;
+      final suffix = ' $preview';
+      newText = text.substring(0, slot.eqPos) +
+          slot.closing +
+          text.substring(slot.eqPos, newlinePos) +
+          suffix +
+          text.substring(newlinePos + 1);
+      newCursor = newlinePos + slot.closing.length + suffix.length;
+      debugPrint(
+          '[math-notes] preview accepted (suggest) "$preview" closing="${slot.closing}"');
+    } else {
+      final closing = _missingCloseParens(text, lineStart, newlinePos);
+      final accepted = '$closing = $preview';
+      newText = text.substring(0, newlinePos) +
+          accepted +
+          text.substring(newlinePos + 1);
+      newCursor = newlinePos + accepted.length;
+      debugPrint(
+          '[math-notes] preview accepted "$preview" closing="$closing"');
+    }
     _textController.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: newCursor),
     );
     _lastText = newText;
     _activePreview = null;
+    _isSuggestActive = false;
     _textController.setPreview(null);
-    debugPrint('[math-notes] preview accepted "$preview" closing="$closing"');
   }
 
   KeyEventResult _onKey(FocusNode node, KeyEvent event) {
@@ -218,20 +271,37 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
         cursor == 0 ? 0 : text.lastIndexOf('\n', cursor - 1) + 1;
     var lineEnd = text.indexOf('\n', cursor);
     if (lineEnd == -1) lineEnd = text.length;
-    final closing = _missingCloseParens(text, lineStart, lineEnd);
-    final accepted = '$closing = $preview';
-    final newText =
-        text.substring(0, lineEnd) + accepted + text.substring(lineEnd);
-    final newCursor = lineEnd + accepted.length;
+    String newText;
+    int newCursor;
+    if (_isSuggestActive) {
+      final slot = _suggestSlot(text, lineStart, lineEnd);
+      if (slot.eqPos < 0) return KeyEventResult.ignored;
+      final suffix = ' $preview';
+      newText = text.substring(0, slot.eqPos) +
+          slot.closing +
+          text.substring(slot.eqPos, lineEnd) +
+          suffix +
+          text.substring(lineEnd);
+      newCursor = lineEnd + slot.closing.length + suffix.length;
+      debugPrint(
+          '[math-notes] preview accepted via tab (suggest) "$preview" closing="${slot.closing}"');
+    } else {
+      final closing = _missingCloseParens(text, lineStart, lineEnd);
+      final accepted = '$closing = $preview';
+      newText =
+          text.substring(0, lineEnd) + accepted + text.substring(lineEnd);
+      newCursor = lineEnd + accepted.length;
+      debugPrint(
+          '[math-notes] preview accepted via tab "$preview" closing="$closing"');
+    }
     _textController.value = TextEditingValue(
       text: newText,
       selection: TextSelection.collapsed(offset: newCursor),
     );
     _lastText = newText;
     _activePreview = null;
+    _isSuggestActive = false;
     _textController.setPreview(null);
-    debugPrint(
-        '[math-notes] preview accepted via tab "$preview" closing="$closing"');
     return KeyEventResult.handled;
   }
 
@@ -368,6 +438,7 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     );
     if (result != null && mounted) {
       setState(() => _formulaResult = result);
+      _updatePreview();
     }
   }
 
@@ -641,7 +712,8 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
           ),
           _menuItem('find_in_note', CupertinoIcons.search, '메모에서 찾기'),
           _menuItem('recent', Icons.history, '최근 메모'),
-          _menuItem('formula_result', Icons.functions, '수식 결과'),
+          _menuItem('formula_result', Icons.functions, '수식 결과',
+              subtitle: _formulaModeLabel(_formulaResult)),
           _menuItem('lines_grid', Icons.grid_on, '줄 및 격자'),
           _menuItem('attachments', Icons.attach_file, '첨부 파일 보기'),
           _menuItem(
@@ -665,18 +737,47 @@ class _NewMathNoteScreenState extends State<NewMathNoteScreen> {
     IconData icon,
     String label, {
     Color? textColor,
+    String? subtitle,
   }) {
     final color = textColor ?? Colors.white;
     return PopupMenuItem<String>(
       value: value,
+      height: subtitle != null ? 56 : kMinInteractiveDimension,
       child: Row(
         children: [
           Icon(icon, size: 20, color: color),
           const SizedBox(width: 12),
-          Text(label, style: TextStyle(color: color, fontSize: 16)),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(label, style: TextStyle(color: color, fontSize: 16)),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: TextStyle(
+                    color: Colors.grey[500],
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ],
+          ),
         ],
       ),
     );
+  }
+
+  static String _formulaModeLabel(FormulaResultMode mode) {
+    switch (mode) {
+      case FormulaResultMode.insert:
+        return '결과 삽입';
+      case FormulaResultMode.suggest:
+        return '결과 제안';
+      case FormulaResultMode.off:
+        return '끔';
+    }
   }
 
   Widget _buildCheckButton() {
@@ -859,12 +960,15 @@ class _PatternTile extends StatelessWidget {
 
 class _PreviewTextEditingController extends TextEditingController {
   String? _preview;
+  bool _isSuggest = false;
 
   String? get preview => _preview;
+  bool get isSuggest => _isSuggest;
 
-  void setPreview(String? next) {
-    if (_preview == next) return;
+  void setPreview(String? next, {bool isSuggest = false}) {
+    if (_preview == next && _isSuggest == isSuggest) return;
     _preview = next;
+    _isSuggest = isSuggest;
   }
 
   @override
@@ -892,12 +996,43 @@ class _PreviewTextEditingController extends TextEditingController {
       lineEnd = next == -1 ? text.length : next;
       lineStart = cursor == 0 ? 0 : text.lastIndexOf('\n', cursor - 1) + 1;
     }
+    final previewStyle =
+        (style ?? const TextStyle()).copyWith(color: Colors.orange);
+
+    if (_isSuggest) {
+      int eqPos = lineEnd - 1;
+      while (eqPos >= lineStart &&
+          (text[eqPos] == ' ' || text[eqPos] == '\t')) {
+        eqPos--;
+      }
+      if (eqPos < lineStart || text[eqPos] != '=') {
+        return super.buildTextSpan(
+          context: context,
+          style: style,
+          withComposing: withComposing,
+        );
+      }
+      final exprText = text.substring(lineStart, eqPos);
+      final open = '('.allMatches(exprText).length;
+      final close = ')'.allMatches(exprText).length;
+      final closing = open > close ? ')' * (open - close) : '';
+      return TextSpan(
+        style: style,
+        children: [
+          TextSpan(text: text.substring(0, eqPos)),
+          if (closing.isNotEmpty)
+            TextSpan(text: closing, style: previewStyle),
+          TextSpan(text: text.substring(eqPos, lineEnd)),
+          TextSpan(text: ' $preview', style: previewStyle),
+          if (lineEnd < text.length) TextSpan(text: text.substring(lineEnd)),
+        ],
+      );
+    }
+
     final line = text.substring(lineStart, lineEnd);
     final open = '('.allMatches(line).length;
     final close = ')'.allMatches(line).length;
     final closing = open > close ? ')' * (open - close) : '';
-    final previewStyle =
-        (style ?? const TextStyle()).copyWith(color: Colors.orange);
     return TextSpan(
       style: style,
       children: [
